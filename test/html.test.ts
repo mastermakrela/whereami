@@ -1,5 +1,17 @@
+import type { HtmlTagDescriptor } from "vite";
 import { describe, expect, it } from "vitest";
-import { applyTitlePrefix, bannerTags, faviconLinkTag, stripFaviconLinks } from "../src/html.js";
+import {
+	applyTitlePrefix,
+	badgeTag,
+	consoleBannerTag,
+	faviconLinkTag,
+	metaTags,
+	stripFaviconLinks,
+} from "../src/html.js";
+
+function names(tags: HtmlTagDescriptor[]) {
+	return tags.map((t) => t.attrs?.name);
+}
 
 describe("applyTitlePrefix", () => {
 	it("prepends the prefix inside the title tag", () => {
@@ -26,38 +38,70 @@ describe("faviconLinkTag", () => {
 	});
 });
 
-describe("bannerTags", () => {
+describe("metaTags", () => {
 	const pkg = { name: "app", version: "1.0.0" };
 
-	it("includes meta and script tags when both are enabled", () => {
-		const tags = bannerTags(
+	it("builds name/version/environment meta tags", () => {
+		const tags = metaTags(
 			{ enabled: true, meta: true, console: true, metaPrefix: "app" },
 			pkg,
 			"dev",
-			"#22c55e",
 		);
-		const metaNames = tags.filter((t) => t.tag === "meta").map((t) => t.attrs?.name);
-		expect(metaNames).toEqual(["app-name", "app-version", "app-environment"]);
-		expect(tags.some((t) => t.tag === "script")).toBe(true);
+		expect(names(tags)).toEqual(["app-name", "app-version", "app-environment"]);
 	});
 
-	it("omits meta tags when meta is disabled", () => {
-		const tags = bannerTags(
-			{ enabled: true, meta: false, console: true, metaPrefix: "app" },
+	it("respects a custom metaPrefix", () => {
+		const tags = metaTags(
+			{ enabled: true, meta: true, console: true, metaPrefix: "whereami" },
 			pkg,
 			"dev",
-			"#22c55e",
 		);
-		expect(tags.some((t) => t.tag === "meta")).toBe(false);
+		expect(names(tags)).toEqual(["whereami-name", "whereami-version", "whereami-environment"]);
 	});
 
-	it("omits the script when console is disabled", () => {
-		const tags = bannerTags(
-			{ enabled: true, meta: true, console: false, metaPrefix: "app" },
-			pkg,
-			"dev",
-			"#22c55e",
-		);
-		expect(tags.some((t) => t.tag === "script")).toBe(false);
+	it("returns nothing when meta is disabled", () => {
+		expect(
+			metaTags({ enabled: true, meta: false, console: true, metaPrefix: "app" }, pkg, "dev"),
+		).toEqual([]);
+	});
+});
+
+describe("consoleBannerTag", () => {
+	const pkg = { name: "app", version: "1.0.0" };
+
+	it("embeds name/version/environment in the script", () => {
+		const tag = consoleBannerTag(pkg, "dev", "#22c55e", {});
+		expect(tag.tag).toBe("script");
+		expect(tag.children).toContain("app@1.0.0");
+		expect(tag.children).toContain("#22c55e");
+		expect(tag.children).not.toContain("console.log({");
+	});
+
+	it("logs custom metadata as a second console.log call when provided", () => {
+		const tag = consoleBannerTag(pkg, "dev", "#22c55e", { region: "eu-central" });
+		expect(tag.children).toContain('console.log({"region":"eu-central"});');
+	});
+});
+
+describe("badgeTag", () => {
+	const pkg = { name: "app", version: "1.0.0" };
+
+	it("embeds the color and a merged info object including metadata", () => {
+		const tag = badgeTag(pkg, "staging", "#f59e0b", { region: "eu-central" });
+		expect(tag.tag).toBe("script");
+		expect(tag.children).toContain('"#f59e0b"');
+		const info = JSON.parse((tag.children as string).match(/var info = (\{.*?\});/)?.[1] ?? "{}");
+		expect(info).toEqual({
+			region: "eu-central",
+			name: "app",
+			version: "1.0.0",
+			environment: "staging",
+		});
+	});
+
+	it("lets the built-in fields win over a colliding metadata key", () => {
+		const tag = badgeTag(pkg, "staging", "#f59e0b", { name: "custom" });
+		const info = JSON.parse((tag.children as string).match(/var info = (\{.*?\});/)?.[1] ?? "{}");
+		expect(info.name).toBe("app");
 	});
 });

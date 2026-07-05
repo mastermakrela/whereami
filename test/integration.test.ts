@@ -112,6 +112,49 @@ describe("build", () => {
 		expect(html).not.toContain("app-name");
 		expect(html).not.toContain("console.log");
 	});
+
+	it("includes the on-screen badge with metadata in dev, but not in prod", async () => {
+		const metadata = { region: "eu-central" };
+
+		await build({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			mode: "development",
+			build: { outDir: "dist-test", write: true },
+			plugins: [whereami({ metadata })],
+		});
+		const devHtml = await readFile(path.join(basicRoot, "dist-test/index.html"), "utf-8");
+		expect(devHtml).toContain("clip-path:polygon");
+		expect(devHtml).toContain('"region":"eu-central"');
+		expect(devHtml).toContain('console.log({"region":"eu-central"});');
+
+		await build({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			mode: "production",
+			build: { outDir: "dist-test", write: true },
+			plugins: [whereami({ metadata })],
+		});
+		const prodHtml = await readFile(path.join(basicRoot, "dist-test/index.html"), "utf-8");
+		expect(prodHtml).not.toContain("clip-path:polygon");
+	});
+
+	it("disables the badge via badge: false while keeping the console banner", async () => {
+		await build({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			mode: "development",
+			build: { outDir: "dist-test", write: true },
+			plugins: [whereami({ badge: false })],
+		});
+
+		const html = await readFile(path.join(basicRoot, "dist-test/index.html"), "utf-8");
+		expect(html).not.toContain("clip-path:polygon");
+		expect(html).toContain("console.log(");
+	});
 });
 
 describe("dev server", () => {

@@ -8,9 +8,21 @@ import {
 	generateDefaultIcon,
 	tintFavicon,
 } from "./favicon.js";
-import { applyTitlePrefix, bannerTags, faviconLinkTag, stripFaviconLinks } from "./html.js";
+import {
+	applyTitlePrefix,
+	badgeTag,
+	consoleBannerTag,
+	faviconLinkTag,
+	metaTags,
+	stripFaviconLinks,
+} from "./html.js";
 import { readPkgInfo } from "./pkg.js";
-import type { EnvironmentConfig, ResolvedBannerOptions, WhereAmIOptions } from "./types.js";
+import type {
+	EnvironmentConfig,
+	ResolvedBadgeOptions,
+	ResolvedBannerOptions,
+	WhereAmIOptions,
+} from "./types.js";
 
 export type {
 	WhereAmIOptions,
@@ -18,6 +30,7 @@ export type {
 	DetectContext,
 	FaviconOptions,
 	BannerOptions,
+	BadgeOptions,
 } from "./types.js";
 
 const DEFAULT_ENVIRONMENTS: Record<string, EnvironmentConfig> = {
@@ -42,6 +55,12 @@ function resolveBanner(banner: WhereAmIOptions["banner"]): ResolvedBannerOptions
 	};
 }
 
+function resolveBadge(badge: WhereAmIOptions["badge"]): ResolvedBadgeOptions {
+	if (badge === false) return { enabled: false };
+	const opts = badge === true || badge === undefined ? {} : badge;
+	return { enabled: opts.enabled ?? true };
+}
+
 function joinUrl(base: string, fileName: string): string {
 	return `${base.replace(/\/+$/, "")}/${fileName}`;
 }
@@ -50,6 +69,8 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 	const detect = options.detect ?? defaultDetect;
 	const environments = { ...DEFAULT_ENVIRONMENTS, ...options.environments };
 	const banner = resolveBanner(options.banner);
+	const badge = resolveBadge(options.badge);
+	const metadata = options.metadata ?? {};
 	const faviconEnabled = options.favicon?.enabled ?? true;
 
 	let root: string;
@@ -131,7 +152,14 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 			}
 
 			if (banner.enabled) {
-				tags.push(...bannerTags(banner, pkg, envKey, envConfig.color ?? "#6b7280"));
+				tags.push(...metaTags(banner, pkg, envKey));
+				if (banner.console) {
+					tags.push(consoleBannerTag(pkg, envKey, envConfig.color ?? "#6b7280", metadata));
+				}
+			}
+
+			if (badge.enabled && envConfig.color) {
+				tags.push(badgeTag(pkg, envKey, envConfig.color, metadata));
 			}
 
 			return { html: out, tags };

@@ -2,7 +2,9 @@
 
 Tints your favicon and prefixes the page title per environment, so you never
 mistake a staging tab for prod again — plus an optional build-info banner
-(name/version/environment) in `<head>` and the browser console.
+(name/version/environment) in `<head>` and the browser console, and an
+on-screen corner badge for build info that's always visible, custom
+metadata included.
 
 Inspired by [this tip](https://x.com/dferber90) about using a different favicon
 per environment to keep tabs visually distinct.
@@ -121,6 +123,43 @@ whereami({
 whereami({ banner: false });
 ```
 
+## On-screen badge
+
+A small colored triangle, fixed to the bottom-left corner, in every non-prod
+environment (same "no `color`, no badge" rule as the favicon — prod stays a
+no-op by default). Click it to open a panel with the same info as the console
+banner, in a `<pre>` block:
+
+![A page with an "Open devtools console" message, a colored triangle in the bottom-left corner, and an open panel showing name, version, environment, and custom metadata as JSON](.github/readme/badge-example.png)
+
+Dismiss it by clicking the × button, clicking anywhere outside the panel, or
+pressing Escape.
+
+```ts
+whereami({ badge: { enabled: true } });
+
+// or shorthand to disable it:
+whereami({ badge: false });
+```
+
+## Custom metadata
+
+Anything you pass to `metadata` shows up in both the console banner (as a
+second, inspectable `console.log`) and the badge's panel, merged with the
+built-in name/version/environment (which always win on a key clash):
+
+```ts
+whereami({
+	metadata: {
+		region: process.env.FLY_REGION,
+		commit: process.env.GITHUB_SHA?.slice(0, 7),
+	},
+});
+```
+
+Values must be JSON-serializable — they're embedded into the injected script
+at build/dev-server-start time, not read at request time.
+
 ## SvelteKit
 
 Works the same way — add it to `vite.config.ts`:
@@ -147,6 +186,8 @@ interface WhereAmIOptions {
 	environments?: Record<string, { color?: string; titlePrefix?: string }>;
 	favicon?: { enabled?: boolean; path?: string };
 	banner?: boolean | { enabled?: boolean; meta?: boolean; console?: boolean; metaPrefix?: string };
+	badge?: boolean | { enabled?: boolean };
+	metadata?: Record<string, unknown>; // must be JSON-serializable
 	packageJsonPath?: string; // default: "package.json"
 }
 ```

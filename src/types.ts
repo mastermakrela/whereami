@@ -42,6 +42,15 @@ export interface BannerOptions {
 	console?: boolean;
 }
 
+export interface BadgeOptions {
+	/**
+	 * Master switch for the on-screen corner badge. Default: `true`.
+	 * Like the favicon/title, it only renders when the environment has a `color`
+	 * (prod stays a no-op by default).
+	 */
+	enabled?: boolean;
+}
+
 export interface WhereAmIOptions {
 	/**
 	 * Decide which environment we're running in. Return a key present in `environments`.
@@ -57,6 +66,16 @@ export interface WhereAmIOptions {
 	favicon?: FaviconOptions;
 	/** `false` disables the whole banner feature (shorthand for `{ enabled: false }`). */
 	banner?: boolean | BannerOptions;
+	/**
+	 * `false` disables the on-screen corner badge (shorthand for `{ enabled: false }`).
+	 * See `BadgeOptions`.
+	 */
+	badge?: boolean | BadgeOptions;
+	/**
+	 * Arbitrary extra data included alongside name/version/environment in the console
+	 * banner and the badge's detail panel. Must be JSON-serializable.
+	 */
+	metadata?: Record<string, unknown>;
 	/** Path to `package.json` used for the banner's name/version, relative to the project root. */
 	packageJsonPath?: string;
 }
@@ -66,4 +85,8 @@ export interface ResolvedBannerOptions {
 	meta: boolean;
 	metaPrefix: string;
 	console: boolean;
+}
+
+export interface ResolvedBadgeOptions {
+	enabled: boolean;
 }
