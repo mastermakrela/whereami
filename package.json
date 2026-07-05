@@ -47,6 +47,8 @@
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"changeset": "changeset",
+		"playground": "bun run build && vite playground-app",
+		"playground:build": "bun run build && vite build playground-app",
 		"prepublishOnly": "bun run build"
 	},
 	"dependencies": {

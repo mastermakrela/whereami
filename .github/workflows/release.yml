@@ -23,8 +23,8 @@ jobs:
         with:
           bun-version: latest
 
-      # changesets/action shells out to npm to publish; this wires up the
-      # registry + auth token it needs on top of bun.
+      # The actual publish step below always runs the real `npm` CLI, not bun/pnpm —
+      # npm's OIDC trusted publishing (no NPM_TOKEN needed) only works there.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,13 +32,51 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run test
-      - run: bun run build
 
-      - name: Create Release PR or Publish
+      # Opens/updates a "Version Packages" PR when there are pending changesets.
+      # No `publish` input here on purpose — publishing is handled below with a
+      # plain `npm publish`, since changesets would otherwise shell out to `bun
+      # publish` (bun.lock is present) and bun doesn't support OIDC trusted
+      # publishing yet.
+      - name: Version
         uses: changesets/action@v1
-        with:
-          publish: bunx changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+
+      - name: Check if this version is already published
+        id: version-check
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+
+          LATEST_VERSION=$(npm view vite-plugin-whereami version 2>/dev/null || echo "0.0.0")
+          echo "Latest published: $LATEST_VERSION"
+
+          IS_NEWER=$(node -e "
+            const current = '$CURRENT_VERSION';
+            const latest = '$LATEST_VERSION';
+
+            function compareVersions(a, b) {
+              const aParts = a.split('.').map(Number);
+              const bParts = b.split('.').map(Number);
+              for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+                const aPart = aParts[i] || 0;
+                const bPart = bParts[i] || 0;
+                if (aPart > bPart) return 1;
+                if (aPart < bPart) return -1;
+              }
+              return 0;
+            }
+
+            console.log(compareVersions(current, latest) > 0 ? 'true' : 'false');
+          ")
+          echo "Is newer: $IS_NEWER"
+          echo "is-newer=$IS_NEWER" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        if: steps.version-check.outputs.is-newer == 'true'
+        run: bun run build
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.is-newer == 'true'
+        run: npm publish

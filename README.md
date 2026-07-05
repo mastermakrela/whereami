@@ -46,15 +46,22 @@ letter of your `package.json` name.
 By default, whereami checks, in order:
 
 1. the `WHEREAMI_ENV` environment variable, if set
-2. Vite's `mode`: `"production"` → `prod`, `"staging"` → `staging`, anything else → `dev`
+2. a few popular hosting platforms' own environment variables:
+   - **Vercel** — `VERCEL_ENV`: `production` → `prod`, `preview` → `staging`, `development` → `dev`
+   - **Cloudflare Pages** — [`CF_PAGES`/`CF_PAGES_BRANCH`](https://developers.cloudflare.com/pages/configuration/build-configuration/#environment-variables): the `main`/`master` branch → `prod`, any other branch → `staging`
+   - **Node** — `NODE_ENV=production` → `prod`
+3. Vite's `mode`: `"production"` → `prod`, `"staging"` → `staging`, anything else → `dev`
 
 You can fully replace this with your own function — return any string key,
 matched against `environments`:
 
 ```ts
 whereami({
-	detect: ({ mode, command, env }) => {
-		if (env.VERCEL_ENV === "preview") return "staging";
+	detect: ({ mode, env }) => {
+		// https://developers.cloudflare.com/pages/configuration/build-configuration/#environment-variables
+		if (env.CF_PAGES === "1") {
+			return env.CF_PAGES_BRANCH === "main" ? "prod" : "staging";
+		}
 		return mode === "production" ? "prod" : "dev";
 	},
 });
@@ -154,30 +161,31 @@ bun run format:check  # oxfmt --check
 ```
 
 `playground-app/` is a throwaway Vite project (gitignored) useful for manual
-checks: `bunx vite playground-app` or `bunx vite build playground-app --mode staging`.
+checks:
+
+```sh
+bun run playground         # starts a dev server against playground-app
+bun run playground:build   # runs a production build of playground-app
+```
+
+Both rebuild the plugin first, so changes under `src/` show up on the next run.
+To try a different environment, pass `--mode`, e.g.
+`vite build playground-app --mode staging` (or set `WHEREAMI_ENV=staging`).
 
 ## Releasing
 
-This repo uses [Changesets](https://github.com/changesets/changesets) +
-GitHub Actions to publish to npm. One-time setup after you've connected the
-GitHub repo:
-
-1. Create an npm [automation access token](https://docs.npmjs.com/creating-and-viewing-access-tokens)
-   for this package (or your account/org).
-2. Add it as a repository secret named `NPM_TOKEN`
-   (Settings → Secrets and variables → Actions).
-3. Push to `main`. The very first `npm publish` needs to exist before npm
-   will accept further pushes to the same name — if `vite-plugin-whereami`
-   isn't already the name you're publishing under, update `name` in
-   `package.json` first.
-
-From then on:
+This repo uses [Changesets](https://github.com/changesets/changesets) for
+versioning/changelogs and npm's [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+for the actual `npm publish` — no `NPM_TOKEN` secret needed, as long as this
+package's Trusted Publisher on npmjs.com is configured to point at this
+GitHub repo and the `Release` workflow.
 
 1. Run `bun run changeset` to describe your change (patch/minor/major + summary).
 2. Commit the generated `.changeset/*.md` file and push/merge to `main`.
 3. The `Release` workflow opens a "Version Packages" PR aggregating pending
-   changesets. Merging that PR publishes the new version to npm automatically
-   (with [provenance](https://docs.npmjs.com/generating-provenance-statements)).
+   changesets. Merging that PR bumps the version, then the workflow publishes
+   it to npm with `npm publish` (the one command that actually supports
+   trusted publishing — bun/pnpm don't yet).
 
 ## License
 
