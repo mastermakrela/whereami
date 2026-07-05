@@ -21,7 +21,7 @@ import { defineConfig } from "vite";
 import whereami from "vite-plugin-whereami";
 
 export default defineConfig({
-  plugins: [whereami()],
+	plugins: [whereami()],
 });
 ```
 
@@ -32,7 +32,7 @@ That's it. By default:
 - **dev** (`vite dev`, or any other/unknown mode) — 🟢 green favicon tint + `🟢 ` title prefix.
 
 Unknown modes default to `dev`'s tint on purpose — the whole point is to make it
-obvious when you're *not* looking at production, so an unrecognized mode should
+obvious when you're _not_ looking at production, so an unrecognized mode should
 look suspicious, not blend in.
 
 If your project already has a favicon (`<link rel="icon">` in `index.html`, or
@@ -53,10 +53,10 @@ matched against `environments`:
 
 ```ts
 whereami({
-  detect: ({ mode, command, env }) => {
-    if (env.VERCEL_ENV === "preview") return "staging";
-    return mode === "production" ? "prod" : "dev";
-  },
+	detect: ({ mode, command, env }) => {
+		if (env.VERCEL_ENV === "preview") return "staging";
+		return mode === "production" ? "prod" : "dev";
+	},
 });
 ```
 
@@ -64,13 +64,13 @@ whereami({
 
 ```ts
 whereami({
-  environments: {
-    prod: {}, // no color/titlePrefix = no changes
-    staging: { color: "#f59e0b", titlePrefix: "🟠 [staging] " },
-    dev: { color: "#22c55e", titlePrefix: "🟢 [dev] " },
-    qa: { color: "#a855f7", titlePrefix: "🟣 [qa] " },
-  },
-  detect: ({ mode }) => (mode === "qa" ? "qa" : undefined) ?? "prod",
+	environments: {
+		prod: {}, // no color/titlePrefix = no changes
+		staging: { color: "#f59e0b", titlePrefix: "🟠 [staging] " },
+		dev: { color: "#22c55e", titlePrefix: "🟢 [dev] " },
+		qa: { color: "#a855f7", titlePrefix: "🟣 [qa] " },
+	},
+	detect: ({ mode }) => (mode === "qa" ? "qa" : undefined) ?? "prod",
 });
 ```
 
@@ -82,10 +82,10 @@ default without special-casing it in the plugin itself.
 
 ```ts
 whereami({
-  favicon: {
-    enabled: true, // set false to disable favicon tinting/generation entirely
-    path: "public/logo.svg", // explicit source; auto-detected otherwise
-  },
+	favicon: {
+		enabled: true, // set false to disable favicon tinting/generation entirely
+		path: "public/logo.svg", // explicit source; auto-detected otherwise
+	},
 });
 ```
 
@@ -100,12 +100,12 @@ unless you disable it:
 
 ```ts
 whereami({
-  banner: {
-    enabled: true, // master switch
-    meta: true, // <meta name="app-name" content="..."> etc.
-    console: true, // the console.log banner
-    metaPrefix: "app", // -> app-name, app-version, app-environment
-  },
+	banner: {
+		enabled: true, // master switch
+		meta: true, // <meta name="app-name" content="..."> etc.
+		console: true, // the console.log banner
+		metaPrefix: "app", // -> app-name, app-version, app-environment
+	},
 });
 
 // or shorthand to disable everything:
@@ -122,7 +122,7 @@ import { defineConfig } from "vite";
 import whereami from "vite-plugin-whereami";
 
 export default defineConfig({
-  plugins: [sveltekit(), whereami()],
+	plugins: [sveltekit(), whereami()],
 });
 ```
 
@@ -130,11 +130,15 @@ export default defineConfig({
 
 ```ts
 interface WhereAmIOptions {
-  detect?: (ctx: { mode: string; command: "build" | "serve"; env: Record<string, string> }) => string;
-  environments?: Record<string, { color?: string; titlePrefix?: string }>;
-  favicon?: { enabled?: boolean; path?: string };
-  banner?: boolean | { enabled?: boolean; meta?: boolean; console?: boolean; metaPrefix?: string };
-  packageJsonPath?: string; // default: "package.json"
+	detect?: (ctx: {
+		mode: string;
+		command: "build" | "serve";
+		env: Record<string, string>;
+	}) => string;
+	environments?: Record<string, { color?: string; titlePrefix?: string }>;
+	favicon?: { enabled?: boolean; path?: string };
+	banner?: boolean | { enabled?: boolean; meta?: boolean; console?: boolean; metaPrefix?: string };
+	packageJsonPath?: string; // default: "package.json"
 }
 ```
 
@@ -142,10 +146,11 @@ interface WhereAmIOptions {
 
 ```sh
 bun install
-bun run test        # vitest (unit + integration against fixture vite projects)
-bun run build        # tsup -> dist/
+bun run test          # vitest (unit + integration against fixture vite projects)
+bun run build         # tsup -> dist/
 bun run typecheck
-bun run lint
+bun run lint          # oxlint
+bun run format:check  # oxfmt --check
 ```
 
 `playground-app/` is a throwaway Vite project (gitignored) useful for manual

@@ -106,13 +106,16 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 		},
 
 		configureServer(server) {
-			server.middlewares.use(async (req, res, next) => {
-				const favicon = await computeFavicon();
-				if (!favicon) return next();
-				const url = req.url?.split("?")[0];
-				if (url !== joinUrl(base, `${FAVICON_BASENAME}.${favicon.ext}`)) return next();
-				res.setHeader("Content-Type", favicon.ext === "svg" ? "image/svg+xml" : "image/png");
-				res.end(favicon.content);
+			server.middlewares.use((req, res, next) => {
+				computeFavicon()
+					.then((favicon) => {
+						if (!favicon) return next();
+						const url = req.url?.split("?")[0];
+						if (url !== joinUrl(base, `${FAVICON_BASENAME}.${favicon.ext}`)) return next();
+						res.setHeader("Content-Type", favicon.ext === "svg" ? "image/svg+xml" : "image/png");
+						res.end(favicon.content);
+					})
+					.catch(next);
 			});
 		},
 

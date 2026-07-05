@@ -60,21 +60,21 @@ export function rgbToHsl(r: number, g: number, b: number): Hsl {
 	return { h, s, l };
 }
 
+function hue2rgb(p: number, q: number, t: number): number {
+	let tt = t;
+	if (tt < 0) tt += 1;
+	if (tt > 1) tt -= 1;
+	if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+	if (tt < 1 / 2) return q;
+	if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+	return p;
+}
+
 export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
 	if (s === 0) {
 		const v = Math.round(l * 255);
 		return { r: v, g: v, b: v };
 	}
-
-	const hue2rgb = (p: number, q: number, t: number): number => {
-		let tt = t;
-		if (tt < 0) tt += 1;
-		if (tt > 1) tt -= 1;
-		if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-		if (tt < 1 / 2) return q;
-		if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-		return p;
-	};
 
 	const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
 	const p = 2 * l - q;
