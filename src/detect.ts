@@ -14,16 +14,16 @@ import type { DetectContext } from "./types.js";
  * plugin is to make it obvious when you're *not* looking at production, so an unrecognized
  * mode should look suspicious, not blend in.
  */
-export function defaultDetect({ mode, env }: DetectContext): string {
-	const explicit = env.WHEREAMI_ENV;
+export function defaultDetect(ctx: DetectContext): string {
+	const explicit = ctx.env.WHEREAMI_ENV;
 	if (explicit) return explicit;
 
 	for (const platform of PLATFORM_DETECTORS) {
-		const result = platform.detect(env);
+		const result = platform.detect(ctx);
 		if (result) return result;
 	}
 
-	if (mode === "production") return "prod";
-	if (mode === "staging") return "staging";
+	if (ctx.mode === "production") return "prod";
+	if (ctx.mode === "staging") return "staging";
 	return "dev";
 }

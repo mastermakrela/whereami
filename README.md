@@ -7,6 +7,8 @@ mistake a staging tab for prod again — plus an optional build-info banner
 Inspired by [this tip](https://x.com/dferber90) about using a different favicon
 per environment to keep tabs visually distinct.
 
+![Three browser tabs and console banners showing an untouched prod favicon/title, an orange-tinted staging one, and a green-tinted dev one](.github/readme/tabs-example.png)
+
 ## Install
 
 ```sh

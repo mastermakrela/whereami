@@ -48,14 +48,24 @@ describe("defaultDetect", () => {
 		).toBe("prod");
 	});
 
-	it("falls back to NODE_ENV=production when no platform matches", () => {
+	it("falls back to NODE_ENV=production during serve when no platform matches", () => {
 		expect(
 			defaultDetect({
 				mode: "some-custom-mode",
-				command: "build",
+				command: "serve",
 				env: { NODE_ENV: "production" },
 			}),
 		).toBe("prod");
+	});
+
+	it("ignores NODE_ENV during build, since vite build force-sets it to production regardless of --mode", () => {
+		expect(
+			defaultDetect({
+				mode: "staging",
+				command: "build",
+				env: { NODE_ENV: "production" },
+			}),
+		).toBe("staging");
 	});
 
 	it("checks platforms before the generic NODE_ENV fallback", () => {

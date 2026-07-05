@@ -1,3 +1,5 @@
+import type { DetectContext } from "./types.js";
+
 /**
  * Internal, ordered list of "does this look like platform X, and if so which environment
  * are we in" heuristics. Not part of the public API — consumers who want full control
@@ -11,12 +13,12 @@
 export interface PlatformDetector {
 	name: string;
 	/** Return an environment key, or `undefined` to defer to the next detector. */
-	detect: (env: Record<string, string>) => string | undefined;
+	detect: (ctx: DetectContext) => string | undefined;
 }
 
 const vercel: PlatformDetector = {
 	name: "vercel",
-	detect: (env) => {
+	detect: ({ env }) => {
 		if (env.VERCEL !== "1") return undefined;
 		// https://vercel.com/docs/environment-variables/system-environment-variables
 		switch (env.VERCEL_ENV) {
@@ -36,7 +38,7 @@ const PRODUCTION_BRANCHES = new Set(["main", "master"]);
 
 const cloudflarePages: PlatformDetector = {
 	name: "cloudflare-pages",
-	detect: (env) => {
+	detect: ({ env }) => {
 		if (env.CF_PAGES !== "1") return undefined;
 		// https://developers.cloudflare.com/pages/configuration/build-configuration/#environment-variables
 		// Pages doesn't expose an explicit prod/preview flag, only the branch name, so we
@@ -47,7 +49,15 @@ const cloudflarePages: PlatformDetector = {
 
 const node: PlatformDetector = {
 	name: "node",
-	detect: (env) => (env.NODE_ENV === "production" ? "prod" : undefined),
+	detect: ({ command, env }) => {
+		// Vite's `build` command force-sets NODE_ENV=production internally *regardless*
+		// of --mode, before any plugin runs — so during a build this can never
+		// distinguish "actually prod" from "just building". Only trust it for `serve`,
+		// where Vite leaves NODE_ENV alone (e.g. `NODE_ENV=production vite dev` to
+		// test prod-like behavior locally).
+		if (command !== "serve") return undefined;
+		return env.NODE_ENV === "production" ? "prod" : undefined;
+	},
 };
 
 export const PLATFORM_DETECTORS: PlatformDetector[] = [vercel, cloudflarePages, node];
