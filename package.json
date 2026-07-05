@@ -12,15 +12,15 @@
 		"vite",
 		"vite-plugin"
 	],
-	"homepage": "https://github.com/mastermakrela/vite-plugin-whereami#readme",
+	"homepage": "https://github.com/mastermakrela/whereami#readme",
 	"bugs": {
-		"url": "https://github.com/mastermakrela/vite-plugin-whereami/issues"
+		"url": "https://github.com/mastermakrela/whereami/issues"
 	},
 	"license": "MIT",
 	"author": "mastermakrela",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/mastermakrela/vite-plugin-whereami.git"
+		"url": "git+https://github.com/mastermakrela/whereami.git"
 	},
 	"files": [
 		"dist"
