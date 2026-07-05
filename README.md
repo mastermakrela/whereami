@@ -183,11 +183,11 @@ package's Trusted Publisher on npmjs.com is configured to point at this
 GitHub repo and the `Release` workflow.
 
 1. Run `bun run changeset` to describe your change (patch/minor/major + summary).
-2. Commit the generated `.changeset/*.md` file and push/merge to `main`.
-3. The `Release` workflow opens a "Version Packages" PR aggregating pending
-   changesets. Merging that PR bumps the version, then the workflow publishes
-   it to npm with `npm publish` (the one command that actually supports
-   trusted publishing — bun/pnpm don't yet).
+2. Commit the generated `.changeset/*.md` file and push to `main`.
+3. The `Release` workflow bumps the version and updates `CHANGELOG.md` (committing
+   that straight back to `main`, no PR/review step), then publishes to npm with
+   `npm publish` (the one command that actually supports trusted publishing —
+   bun/pnpm don't yet) — all in the same run.
 
 ## License
 
