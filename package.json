@@ -1,0 +1,68 @@
+{
+	"name": "vite-plugin-whereami",
+	"version": "0.1.0",
+	"description": "Tints your favicon and prefixes the page title per environment (dev/staging/prod), plus an optional build-info banner in <head> and the browser console.",
+	"type": "module",
+	"license": "MIT",
+	"author": "mastermakrela",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mastermakrela/vite-plugin-whereami.git"
+	},
+	"homepage": "https://github.com/mastermakrela/vite-plugin-whereami#readme",
+	"bugs": {
+		"url": "https://github.com/mastermakrela/vite-plugin-whereami/issues"
+	},
+	"keywords": [
+		"vite",
+		"vite-plugin",
+		"favicon",
+		"environment",
+		"staging",
+		"dev",
+		"title",
+		"banner"
+	],
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.cjs"
+		}
+	},
+	"files": ["dist"],
+	"engines": {
+		"node": ">=18"
+	},
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"changeset": "changeset",
+		"prepublishOnly": "bun run build"
+	},
+	"peerDependencies": {
+		"vite": "^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0"
+	},
+	"dependencies": {
+		"pngjs": "^7.0.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@changesets/cli": "^2.27.11",
+		"@types/node": "^22.10.2",
+		"@types/pngjs": "^6.0.5",
+		"tsup": "^8.3.5",
+		"typescript": "^5.7.2",
+		"vite": "^6.0.7",
+		"vitest": "^2.1.8"
+	},
+	"packageManager": "bun@1.3.14"
+}
