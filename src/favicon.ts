@@ -10,10 +10,15 @@ export interface FaviconResult {
 	content: string | Buffer;
 }
 
-const ICON_LINK_RE = /<link\s+[^>]*rel=["'](?:shortcut icon|icon)["'][^>]*>/i;
+/** Matches an existing favicon `<link>` tag, shared with `stripFaviconLinks` in html.ts. */
+export const ICON_LINK_RE = /<link\s+[^>]*rel=["'](?:shortcut icon|icon)["'][^>]*>/i;
 const HREF_RE = /href=["']([^"']+)["']/i;
 
 const DEFAULT_CANDIDATES = ["public/favicon.svg", "public/favicon.png", "public/favicon.ico"];
+
+export function faviconMimeType(ext: "svg" | "png"): string {
+	return ext === "svg" ? "image/svg+xml" : "image/png";
+}
 
 /** Find the project's existing favicon: explicit option > index.html <link> > common defaults. */
 export async function findFaviconSource(
@@ -21,7 +26,11 @@ export async function findFaviconSource(
 	options: FaviconOptions | undefined,
 ): Promise<string | null> {
 	if (options?.path) {
-		return path.resolve(root, options.path);
+		const resolved = path.resolve(root, options.path);
+		if (!existsSync(resolved)) {
+			throw new Error(`whereami: favicon.path "${options.path}" does not exist`);
+		}
+		return resolved;
 	}
 
 	const indexPath = path.join(root, "index.html");

@@ -1,7 +1,10 @@
 import type { HtmlTagDescriptor } from "vite";
+import { ICON_LINK_RE, faviconMimeType } from "./favicon.js";
+import type { PkgInfo } from "./pkg.js";
 import type { ResolvedBannerOptions } from "./types.js";
 
-const TITLE_RE = /(<title>)([\s\S]*?)(<\/title>)/i;
+const TITLE_RE = /(<title[^>]*>)([\s\S]*?)(<\/title>)/i;
+const STRIP_ICON_LINKS_RE = new RegExp(`${ICON_LINK_RE.source}\\s*`, "gi");
 
 export function applyTitlePrefix(html: string, prefix: string): string {
 	if (!prefix || !TITLE_RE.test(html)) return html;
@@ -10,7 +13,7 @@ export function applyTitlePrefix(html: string, prefix: string): string {
 
 /** Remove any existing favicon `<link>` tags so ours doesn't end up alongside a stale one. */
 export function stripFaviconLinks(html: string): string {
-	return html.replace(/<link\s+[^>]*rel=["'](?:shortcut icon|icon)["'][^>]*>\s*/gi, "");
+	return html.replace(STRIP_ICON_LINKS_RE, "");
 }
 
 export function faviconLinkTag(href: string, ext: "svg" | "png"): HtmlTagDescriptor {
@@ -19,13 +22,22 @@ export function faviconLinkTag(href: string, ext: "svg" | "png"): HtmlTagDescrip
 		injectTo: "head",
 		attrs: {
 			rel: "icon",
-			type: ext === "svg" ? "image/svg+xml" : "image/png",
+			type: faviconMimeType(ext),
 			href,
 		},
 	};
 }
 
-type Pkg = { name: string; version: string };
+type Pkg = PkgInfo;
+
+/**
+ * `JSON.stringify` for values embedded in an inline `<script>` tag. Escapes `<` so a
+ * value containing `</script` (from `metadata`, which is arbitrary user data) can't
+ * prematurely close the tag and get the rest re-parsed as HTML.
+ */
+function jsonForScript(value: unknown): string {
+	return JSON.stringify(value).replace(/</g, "\\u003c");
+}
 
 /** Merge name/version/environment with custom metadata; the built-ins always win on key clash. */
 function buildInfo(pkg: Pkg, env: string, metadata: Record<string, unknown>) {
@@ -50,17 +62,17 @@ export function metaTags(
 	}));
 }
 
+function scriptTag(children: string): HtmlTagDescriptor {
+	return { tag: "script", injectTo: "head", children };
+}
+
 export function consoleBannerTag(
 	pkg: Pkg,
 	env: string,
 	color: string,
 	metadata: Record<string, unknown>,
 ): HtmlTagDescriptor {
-	return {
-		tag: "script",
-		injectTo: "head",
-		children: consoleBannerScript(pkg, env, color, metadata),
-	};
+	return scriptTag(consoleBannerScript(pkg, env, color, metadata));
 }
 
 export function badgeTag(
@@ -69,7 +81,7 @@ export function badgeTag(
 	color: string,
 	metadata: Record<string, unknown>,
 ): HtmlTagDescriptor {
-	return { tag: "script", injectTo: "head", children: badgeScript(pkg, env, color, metadata) };
+	return scriptTag(badgeScript(pkg, env, color, metadata));
 }
 
 function consoleBannerScript(
@@ -80,12 +92,12 @@ function consoleBannerScript(
 ): string {
 	const hasMetadata = Object.keys(metadata).length > 0;
 	return `(function(){console.log(
-  ${JSON.stringify(`%c ${pkg.name}@${pkg.version} %c ${env} `)},
+  ${jsonForScript(`%c ${pkg.name}@${pkg.version} %c ${env} `)},
   ${JSON.stringify(
 		"background:#111;color:#fff;padding:2px 0 2px 6px;border-radius:3px 0 0 3px;font-weight:600",
 	)},
   ${JSON.stringify(`background:${color};color:#111;padding:2px 6px 2px 0;border-radius:0 3px 3px 0;font-weight:600`)}
-);${hasMetadata ? `\nconsole.log(${JSON.stringify(metadata)});` : ""}})();`;
+);${hasMetadata ? `\nconsole.log(${jsonForScript(metadata)});` : ""}})();`;
 }
 
 function badgeScript(
@@ -98,7 +110,7 @@ function badgeScript(
 	return `(function(){
 function mount(){
   var color = ${JSON.stringify(color)};
-  var info = ${JSON.stringify(info)};
+  var info = ${jsonForScript(info)};
   var open = false;
 
   var triangle = document.createElement("div");

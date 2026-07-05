@@ -4,6 +4,7 @@ import { defaultDetect } from "./detect.js";
 import {
 	type FaviconResult,
 	UnsupportedFaviconError,
+	faviconMimeType,
 	findFaviconSource,
 	generateDefaultIcon,
 	tintFavicon,
@@ -16,7 +17,7 @@ import {
 	metaTags,
 	stripFaviconLinks,
 } from "./html.js";
-import { readPkgInfo } from "./pkg.js";
+import { type PkgInfo, readPkgInfo } from "./pkg.js";
 import type {
 	EnvironmentConfig,
 	ResolvedBadgeOptions,
@@ -41,12 +42,13 @@ const DEFAULT_ENVIRONMENTS: Record<string, EnvironmentConfig> = {
 
 const FAVICON_BASENAME = "__whereami-favicon";
 
+function faviconFileNameFor(ext: "svg" | "png"): string {
+	return `${FAVICON_BASENAME}.${ext}`;
+}
+
 function resolveBanner(banner: WhereAmIOptions["banner"]): ResolvedBannerOptions {
-	if (banner === false) {
-		return { enabled: false, meta: false, console: false, metaPrefix: "app" };
-	}
-	const opts = banner === true || banner === undefined ? {} : banner;
-	const enabled = opts.enabled ?? true;
+	const opts = typeof banner === "object" ? banner : {};
+	const enabled = banner !== false && (opts.enabled ?? true);
 	return {
 		enabled,
 		meta: enabled && (opts.meta ?? true),
@@ -56,9 +58,8 @@ function resolveBanner(banner: WhereAmIOptions["banner"]): ResolvedBannerOptions
 }
 
 function resolveBadge(badge: WhereAmIOptions["badge"]): ResolvedBadgeOptions {
-	if (badge === false) return { enabled: false };
-	const opts = badge === true || badge === undefined ? {} : badge;
-	return { enabled: opts.enabled ?? true };
+	const opts = typeof badge === "object" ? badge : {};
+	return { enabled: badge !== false && (opts.enabled ?? true) };
 }
 
 function joinUrl(base: string, fileName: string): string {
@@ -78,16 +79,21 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 	let command: "build" | "serve";
 	let envKey: string;
 	let envConfig: EnvironmentConfig;
-	let pkg: { name: string; version: string };
+	let pkg: PkgInfo;
 	let faviconPromise: Promise<FaviconResult | null> | null = null;
-	let faviconFileName: string | null = null;
+	let faviconSourcePath: string | null = null;
+
+	function invalidateFavicon(): void {
+		faviconPromise = null;
+	}
 
 	function computeFavicon(): Promise<FaviconResult | null> {
 		if (!faviconPromise) {
-			faviconPromise = (async () => {
+			const promise: Promise<FaviconResult | null> = (async () => {
 				if (!faviconEnabled || !envConfig.color) return null;
 				const color = envConfig.color;
 				const source = await findFaviconSource(root, options.favicon);
+				faviconSourcePath = source;
 				if (!source) return { ext: "svg", content: generateDefaultIcon(color, pkg.name) };
 				try {
 					return await tintFavicon(source, color);
@@ -101,6 +107,12 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 					throw err;
 				}
 			})();
+			faviconPromise = promise.catch((err) => {
+				// Don't cache a rejected promise forever — a transient failure (locked file,
+				// momentary EMFILE) shouldn't permanently break every future request.
+				invalidateFavicon();
+				throw err;
+			});
 		}
 		return faviconPromise;
 	}
@@ -121,19 +133,30 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 		async buildStart() {
 			if (command !== "build") return;
 			const favicon = await computeFavicon();
+			// `vite build --watch` reuses this plugin instance across rebuilds — watch the
+			// actual favicon source so we only recompute when it (not unrelated files) changes.
+			if (faviconSourcePath) this.addWatchFile(faviconSourcePath);
 			if (!favicon) return;
-			faviconFileName = `${FAVICON_BASENAME}.${favicon.ext}`;
-			this.emitFile({ type: "asset", fileName: faviconFileName, source: favicon.content });
+			this.emitFile({
+				type: "asset",
+				fileName: faviconFileNameFor(favicon.ext),
+				source: favicon.content,
+			});
+		},
+
+		watchChange(id) {
+			if (id === faviconSourcePath) invalidateFavicon();
 		},
 
 		configureServer(server) {
+			const faviconUrlPrefix = joinUrl(base, FAVICON_BASENAME);
 			server.middlewares.use((req, res, next) => {
+				const url = req.url?.split("?")[0];
+				if (!url?.startsWith(faviconUrlPrefix)) return next();
 				computeFavicon()
 					.then((favicon) => {
-						if (!favicon) return next();
-						const url = req.url?.split("?")[0];
-						if (url !== joinUrl(base, `${FAVICON_BASENAME}.${favicon.ext}`)) return next();
-						res.setHeader("Content-Type", favicon.ext === "svg" ? "image/svg+xml" : "image/png");
+						if (!favicon || url !== joinUrl(base, faviconFileNameFor(favicon.ext))) return next();
+						res.setHeader("Content-Type", faviconMimeType(favicon.ext));
 						res.end(favicon.content);
 					})
 					.catch(next);
@@ -147,8 +170,7 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 			const favicon = await computeFavicon();
 			if (favicon) {
 				out = stripFaviconLinks(out);
-				const fileName = faviconFileName ?? `${FAVICON_BASENAME}.${favicon.ext}`;
-				tags.push(faviconLinkTag(joinUrl(base, fileName), favicon.ext));
+				tags.push(faviconLinkTag(joinUrl(base, faviconFileNameFor(favicon.ext)), favicon.ext));
 			}
 
 			if (banner.enabled) {
