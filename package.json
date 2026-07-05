@@ -1,6 +1,6 @@
 {
 	"name": "vite-plugin-whereami",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Tints your favicon and prefixes the page title per environment (dev/staging/prod), plus an optional build-info banner in <head> and the browser console.",
 	"keywords": [
 		"banner",
