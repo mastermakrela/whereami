@@ -21,11 +21,15 @@ jobs:
           bun-version: latest
 
       # The actual publish step below always runs the real `npm` CLI, not bun/pnpm —
-      # npm's OIDC trusted publishing (no NPM_TOKEN needed) only works there.
+      # npm's OIDC trusted publishing (no NPM_TOKEN needed) only works there, and
+      # only on npm >= 11.5.1. Node 22's bundled npm is older than that, which
+      # surfaces as a confusing 404 on publish (npm couldn't send/match the OIDC
+      # token, not an actual "package not found"), so upgrade it explicitly.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
 
       - run: bun install --frozen-lockfile
       - run: bun run test
