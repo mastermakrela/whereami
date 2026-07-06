@@ -98,6 +98,21 @@ describe("build", () => {
 		expect(html).toContain('name="app-environment" content="qa"');
 	});
 
+	it("uses an explicit pkg option instead of reading package.json off disk", async () => {
+		await build({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			mode: "development",
+			build: { outDir: "dist-test", write: true },
+			plugins: [whereami({ pkg: { name: "overridden", version: "9.9.9" } })],
+		});
+
+		const html = await readFile(path.join(basicRoot, "dist-test/index.html"), "utf-8");
+		expect(html).toContain('name="app-name" content="overridden"');
+		expect(html).toContain('name="app-version" content="9.9.9"');
+	});
+
 	it("disables the banner entirely when banner: false", async () => {
 		await build({
 			root: basicRoot,
@@ -154,6 +169,36 @@ describe("build", () => {
 		const html = await readFile(path.join(basicRoot, "dist-test/index.html"), "utf-8");
 		expect(html).not.toContain("clip-path:polygon");
 		expect(html).toContain("console.log(");
+	});
+});
+
+describe("config() define", () => {
+	it("bakes the resolved package name/version into __WHEREAMI_PKG__", async () => {
+		const plugin = whereami();
+		const configHook = plugin.config as (config: { root: string }) => Promise<{
+			define: Record<string, string>;
+		}>;
+
+		const result = await configHook({ root: basicRoot });
+
+		expect(JSON.parse(result.define.__WHEREAMI_PKG__)).toEqual({
+			name: "fixture-basic",
+			version: "1.2.3",
+		});
+	});
+
+	it("respects an explicit pkg option instead of reading package.json", async () => {
+		const plugin = whereami({ pkg: { name: "overridden", version: "9.9.9" } });
+		const configHook = plugin.config as (config: { root: string }) => Promise<{
+			define: Record<string, string>;
+		}>;
+
+		const result = await configHook({ root: basicRoot });
+
+		expect(JSON.parse(result.define.__WHEREAMI_PKG__)).toEqual({
+			name: "overridden",
+			version: "9.9.9",
+		});
 	});
 });
 

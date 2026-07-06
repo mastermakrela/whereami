@@ -11,12 +11,20 @@ import {
 	stripFaviconLinks,
 } from "./html.js";
 import { DEFAULT_ENVIRONMENTS, resolveBadge, resolveBanner } from "./options.js";
-import { readPkgInfo } from "./pkg.js";
+import { type PkgInfo, readPkgInfo } from "./pkg.js";
 import type { DetectContext, EnvironmentConfig, WhereAmIOptions } from "./types.js";
 
 interface FaviconTag {
 	href: string;
 	ext: "svg" | "png";
+}
+
+// Baked in via `define` by the `whereami()` Vite plugin's `config` hook, when that's
+// present in vite.config.ts — stays undeclared (and so `undefined` below) otherwise.
+declare const __WHEREAMI_PKG__: PkgInfo | undefined;
+
+function buildTimePkg(): PkgInfo | undefined {
+	return typeof __WHEREAMI_PKG__ === "undefined" ? undefined : __WHEREAMI_PKG__;
 }
 
 /**
@@ -31,6 +39,16 @@ interface FaviconTag {
  *
  * export const handle = sequence(whereamiHandle(), ...yourOtherHandlers);
  * ```
+ *
+ * Also add the regular `whereami()` plugin to `vite.config.ts` alongside `sveltekit()` —
+ * it no longer does anything to the HTML there, but it bakes the resolved package
+ * name/version into the server bundle at build time, which is what lets this work on
+ * edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) with no real
+ * filesystem at request time. Without it, name/version fall back to reading
+ * `package.json` off disk at request time (fine on Node-based deployments, but silently
+ * `app@0.0.0` on edge runtimes) — pass `pkg: { name, version }` directly to override
+ * either way. A custom `favicon.path` is still unreachable on edge runtimes either way;
+ * the generated letter icon is used instead, correctly once the name is resolved.
  */
 export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const detect = options.detect ?? defaultDetect;
@@ -54,7 +72,9 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const envKey = detect(ctx);
 	const envConfig: EnvironmentConfig = environments[envKey] ?? {};
 
-	const pkgPromise = readPkgInfo(root, options.packageJsonPath);
+	const pkgPromise: Promise<PkgInfo> = Promise.resolve(options.pkg ?? buildTimePkg()).then(
+		(pkg) => pkg ?? readPkgInfo(root, options.packageJsonPath),
+	);
 	let faviconPromise: Promise<FaviconTag | null> | null = null;
 
 	function computeFavicon(): Promise<FaviconTag | null> {

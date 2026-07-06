@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Plugin, ResolvedConfig } from "vite";
 import { loadEnv } from "vite";
 import { defaultDetect } from "./detect.js";
@@ -80,14 +81,23 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 	return {
 		name: "vite-plugin-whereami",
 
-		async configResolved(config: ResolvedConfig) {
+		// Resolved here (rather than configResolved) so it can be baked into a `define`
+		// before the build runs — that's what lets `whereamiHandle()`, bundled straight
+		// into a SvelteKit server build, read it back without touching the filesystem at
+		// request time (there isn't one on edge/isolate runtimes like Cloudflare Workers).
+		async config(config) {
+			const configRoot = path.resolve(config.root ?? process.cwd());
+			pkg = options.pkg ?? (await readPkgInfo(configRoot, options.packageJsonPath));
+			return { define: { __WHEREAMI_PKG__: JSON.stringify(pkg) } };
+		},
+
+		configResolved(config: ResolvedConfig) {
 			root = config.root;
 			base = config.base;
 			command = config.command;
 			const env = loadEnv(config.mode, root, "");
 			envKey = detect({ mode: config.mode, command, env });
 			envConfig = environments[envKey] ?? {};
-			pkg = await readPkgInfo(root, options.packageJsonPath);
 		},
 
 		async buildStart() {

@@ -1,3 +1,5 @@
+import type { PkgInfo } from "./pkg.js";
+
 export interface EnvironmentConfig {
 	/**
 	 * Hex color (e.g. "#f59e0b") used to tint the favicon and color the banner.
@@ -79,6 +81,13 @@ export interface WhereAmIOptions {
 	metadata?: Record<string, unknown>;
 	/** Path to `package.json` used for the banner's name/version, relative to the project root. */
 	packageJsonPath?: string;
+	/**
+	 * Provide the name/version directly instead of reading `package.json` off disk.
+	 * Bypasses `packageJsonPath` and the filesystem entirely when set — required for
+	 * `whereamiHandle()` on edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno
+	 * Deploy) where there's no real filesystem at request time.
+	 */
+	pkg?: PkgInfo;
 }
 
 export interface ResolvedBannerOptions {

@@ -185,10 +185,22 @@ at build/dev-server-start time, not read at request time.
 ## SvelteKit
 
 SvelteKit renders pages through its own SSR pipeline and never calls Vite's
-`transformIndexHtml` hook, so the plugin above is a no-op there — adding it to
-`vite.config.ts` changes nothing. Use the `vite-plugin-whereami/sveltekit`
-entry point instead, which does the same favicon/title/banner/badge injection
-through SvelteKit's own `transformPageChunk`, in `hooks.server.ts`:
+`transformIndexHtml` hook, so the plugin's HTML injection is a no-op there.
+Use the `vite-plugin-whereami/sveltekit` entry point instead, which does the
+same favicon/title/banner/badge injection through SvelteKit's own
+`transformPageChunk`, in `hooks.server.ts` — but keep `whereami()` in
+`vite.config.ts` too, alongside `sveltekit()`:
+
+```ts
+// vite.config.ts
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vite";
+import whereami from "vite-plugin-whereami";
+
+export default defineConfig({
+	plugins: [whereami(), sveltekit()],
+});
+```
 
 ```ts
 // src/hooks.server.ts
@@ -198,7 +210,17 @@ import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
 export const handle = sequence(whereamiHandle() /* ...your other handlers */);
 ```
 
-`whereamiHandle()` takes the same options as the Vite plugin, with two
+`whereami()` in `vite.config.ts` no longer touches the HTML under SvelteKit,
+but it still reads `package.json` at build time and bakes the result into the
+server bundle — which is what lets `whereamiHandle()` report the right
+name/version with **no filesystem access at request time**, including on
+edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) that don't
+have one. Without `whereami()` in `vite.config.ts`, `whereamiHandle()` falls
+back to reading `package.json` off disk at request time instead — fine on
+Node-based deployments, but silently `app@0.0.0` on edge runtimes. Pass
+`pkg: { name, version }` directly to `whereamiHandle()` to override either way.
+
+`whereamiHandle()` takes the same options as the Vite plugin, with two other
 differences:
 
 - There's no Vite `mode`/`command` at request time (this runs in the already-
@@ -207,7 +229,9 @@ differences:
   Vercel/Cloudflare Pages checks work exactly the same way.
 - The favicon is inlined as a `data:` URI in the `<link>` tag rather than served
   from a separate emitted file, since there's no Vite build pipeline to emit
-  assets into at request time.
+  assets into at request time. A custom `favicon.path` is still unreachable on
+  edge runtimes without a filesystem; the generated letter icon is used
+  instead, correctly once the name is resolved.
 
 ## Full options reference
 
@@ -224,6 +248,7 @@ interface WhereAmIOptions {
 	badge?: boolean | { enabled?: boolean };
 	metadata?: Record<string, unknown>; // must be JSON-serializable
 	packageJsonPath?: string; // default: "package.json"
+	pkg?: { name: string; version: string }; // bypasses packageJsonPath/fs when set
 }
 ```
 
