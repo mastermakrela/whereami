@@ -1,5 +1,11 @@
 # vite-plugin-whereami
 
+## 0.3.1
+
+### Patch Changes
+
+- 65c2f20: Widen the `vite` peer dependency range to include `^8.0.0`. The plugin's build/dev-server behavior is unchanged and works correctly under Vite 8 — the peer range just hadn't been updated since Vite 8 shipped, which broke `npm install` with `ERESOLVE` for anyone on it (e.g. via `@sveltejs/kit`'s own `vite: ^8.0.0` peer range).
+
 ## 0.3.0
 
 ### Minor Changes
