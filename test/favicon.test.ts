@@ -20,7 +20,7 @@ describe("tintSvg", () => {
 });
 
 describe("tintPng", () => {
-	it("recolors opaque pixels toward the target hue while keeping alpha", () => {
+	it("recolors opaque pixels toward the target hue while keeping alpha", async () => {
 		const png = new PNG({ width: 2, height: 1 });
 		// one gray pixel, one transparent pixel
 		png.data[0] = 128;
@@ -33,7 +33,7 @@ describe("tintPng", () => {
 		png.data[7] = 0;
 		const buffer = PNG.sync.write(png);
 
-		const tinted = PNG.sync.read(tintPng(buffer, "#0000ff"));
+		const tinted = PNG.sync.read(await tintPng(buffer, "#0000ff"));
 
 		// gray pixel should shift toward blue
 		expect(tinted.data[2]).toBeGreaterThan(tinted.data[0]);

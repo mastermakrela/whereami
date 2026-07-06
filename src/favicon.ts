@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PNG } from "pngjs";
 import { hexToHsl, hslToRgb } from "./color.js";
 import type { FaviconOptions } from "./types.js";
 
@@ -84,7 +83,7 @@ export async function tintFavicon(sourcePath: string, color: string): Promise<Fa
 
 	if (ext === ".png") {
 		const buffer = await readFile(sourcePath);
-		return { ext: "png", content: tintPng(buffer, color) };
+		return { ext: "png", content: await tintPng(buffer, color) };
 	}
 
 	throw new UnsupportedFaviconError(ext);
@@ -112,8 +111,13 @@ export function tintSvg(svg: string, color: string): string {
 	return `${open}${filter}<g filter="url(#whereami-tint)">${inner}</g>${close}`;
 }
 
-/** Per-pixel recolor: keep each pixel's lightness, replace its hue/saturation with `color`'s. */
-export function tintPng(buffer: Buffer, color: string): Buffer {
+/**
+ * Per-pixel recolor: keep each pixel's lightness, replace its hue/saturation with `color`'s.
+ * `pngjs` is imported dynamically so it (and its `zlib`/`util`/`buffer` needs) only load when
+ * a `.png` favicon is actually tinted — the default SVG letter icon never pulls it in.
+ */
+export async function tintPng(buffer: Buffer, color: string): Promise<Buffer> {
+	const { PNG } = await import("pngjs");
 	const { h, s } = hexToHsl(color);
 	const png = PNG.sync.read(buffer);
 

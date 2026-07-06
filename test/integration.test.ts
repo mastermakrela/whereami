@@ -172,36 +172,6 @@ describe("build", () => {
 	});
 });
 
-describe("config() define", () => {
-	it("bakes the resolved package name/version into __WHEREAMI_PKG__", async () => {
-		const plugin = whereami();
-		const configHook = plugin.config as (config: { root: string }) => Promise<{
-			define: Record<string, string>;
-		}>;
-
-		const result = await configHook({ root: basicRoot });
-
-		expect(JSON.parse(result.define.__WHEREAMI_PKG__)).toEqual({
-			name: "fixture-basic",
-			version: "1.2.3",
-		});
-	});
-
-	it("respects an explicit pkg option instead of reading package.json", async () => {
-		const plugin = whereami({ pkg: { name: "overridden", version: "9.9.9" } });
-		const configHook = plugin.config as (config: { root: string }) => Promise<{
-			define: Record<string, string>;
-		}>;
-
-		const result = await configHook({ root: basicRoot });
-
-		expect(JSON.parse(result.define.__WHEREAMI_PKG__)).toEqual({
-			name: "overridden",
-			version: "9.9.9",
-		});
-	});
-});
-
 describe("dev server", () => {
 	it("serves the generated favicon and transforms index.html", async () => {
 		server = await createServer({

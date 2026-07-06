@@ -158,27 +158,4 @@ describe("whereamiHandle", () => {
 		expect(html).toContain('name="app-version" content="9.9.9"');
 		expect(html).not.toContain('content="app"');
 	});
-
-	it("uses the build-time __WHEREAMI_PKG__ global when set (as the whereami() Vite plugin's define would inject)", async () => {
-		Object.assign(globalThis, { __WHEREAMI_PKG__: { name: "baked-in", version: "3.3.3" } });
-		try {
-			const html = await render(whereamiHandle({ detect: () => "dev" }));
-			expect(html).toContain('name="app-name" content="baked-in"');
-			expect(html).toContain('name="app-version" content="3.3.3"');
-		} finally {
-			delete (globalThis as { __WHEREAMI_PKG__?: unknown }).__WHEREAMI_PKG__;
-		}
-	});
-
-	it("prefers an explicit pkg option over the build-time __WHEREAMI_PKG__ global", async () => {
-		Object.assign(globalThis, { __WHEREAMI_PKG__: { name: "baked-in", version: "3.3.3" } });
-		try {
-			const html = await render(
-				whereamiHandle({ detect: () => "dev", pkg: { name: "explicit", version: "1.1.1" } }),
-			);
-			expect(html).toContain('name="app-name" content="explicit"');
-		} finally {
-			delete (globalThis as { __WHEREAMI_PKG__?: unknown }).__WHEREAMI_PKG__;
-		}
-	});
 });

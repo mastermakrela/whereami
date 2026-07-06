@@ -26,8 +26,15 @@ Install and configure vite-plugin-whereami (https://www.npmjs.com/package/vite-p
 in this project:
 
 1. Add it as a dev dependency with this project's package manager.
-2. Add `whereami()` to the `plugins` array in the Vite config (vite.config.ts/js,
-   or the SvelteKit config — same place).
+2. Wire it up for this project's framework:
+   - Plain Vite: add `whereami()` to the `plugins` array in vite.config.ts/js.
+   - SvelteKit: DON'T add the Vite plugin (it's a no-op there). Instead add
+     `whereamiHandle()` to `src/hooks.server.ts`, and pass the app's name/version
+     imported from package.json so it works on edge runtimes:
+     `import { name, version } from "../package.json";`
+     `export const handle = whereamiHandle({ pkg: { name, version } });`
+     (use `sequence()` from `@sveltejs/kit/hooks` if there are other handlers).
+     See https://github.com/mastermakrela/whereami#sveltekit.
 3. Check how/where this project deploys (vercel.json, .vercel/, wrangler.toml or
    wrangler.jsonc, CI/CD workflow files). Vercel and Cloudflare Pages are
    auto-detected out of the box, so usually nothing else is needed. If it deploys
@@ -185,40 +192,30 @@ at build/dev-server-start time, not read at request time.
 ## SvelteKit
 
 SvelteKit renders pages through its own SSR pipeline and never calls Vite's
-`transformIndexHtml` hook, so the plugin's HTML injection is a no-op there.
-Use the `vite-plugin-whereami/sveltekit` entry point instead, which does the
-same favicon/title/banner/badge injection through SvelteKit's own
-`transformPageChunk`, in `hooks.server.ts` — but keep `whereami()` in
-`vite.config.ts` too, alongside `sveltekit()`:
-
-```ts
-// vite.config.ts
-import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
-import whereami from "vite-plugin-whereami";
-
-export default defineConfig({
-	plugins: [whereami(), sveltekit()],
-});
-```
+`transformIndexHtml` hook, so the regular `whereami()` plugin is a no-op there —
+you don't need it in `vite.config.ts`. Use the `vite-plugin-whereami/sveltekit`
+entry point instead, which does the same favicon/title/banner/badge injection
+through SvelteKit's own `transformPageChunk`, wired into `hooks.server.ts`:
 
 ```ts
 // src/hooks.server.ts
 import { sequence } from "@sveltejs/kit/hooks";
+import { name, version } from "../package.json";
 import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
 
-export const handle = sequence(whereamiHandle() /* ...your other handlers */);
+export const handle = sequence(
+	whereamiHandle({ pkg: { name, version } }) /* ...your other handlers */,
+);
 ```
 
-`whereami()` in `vite.config.ts` no longer touches the HTML under SvelteKit,
-but it still reads `package.json` at build time and bakes the result into the
-server bundle — which is what lets `whereamiHandle()` report the right
-name/version with **no filesystem access at request time**, including on
-edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) that don't
-have one. Without `whereami()` in `vite.config.ts`, `whereamiHandle()` falls
-back to reading `package.json` off disk at request time instead — fine on
-Node-based deployments, but silently `app@0.0.0` on edge runtimes. Pass
-`pkg: { name, version }` directly to `whereamiHandle()` to override either way.
+Importing `name`/`version` from `package.json` and passing them as `pkg` is what
+lets `whereamiHandle()` label the banner/badge with **no filesystem access at
+request time**, including on edge/isolate runtimes (Cloudflare Workers, Vercel
+Edge, Deno Deploy) that don't have one: the import is inlined into your
+`hooks.server.ts` — always part of the server bundle — at build time. Omit
+`pkg` and it falls back to reading `package.json` off disk at request time
+instead — fine on Node-based deployments, but silently `app@0.0.0` on edge
+runtimes.
 
 `whereamiHandle()` takes the same options as the Vite plugin, with two other
 differences:

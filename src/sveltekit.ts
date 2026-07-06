@@ -19,36 +19,27 @@ interface FaviconTag {
 	ext: "svg" | "png";
 }
 
-// Baked in via `define` by the `whereami()` Vite plugin's `config` hook, when that's
-// present in vite.config.ts — stays undeclared (and so `undefined` below) otherwise.
-declare const __WHEREAMI_PKG__: PkgInfo | undefined;
-
-function buildTimePkg(): PkgInfo | undefined {
-	return typeof __WHEREAMI_PKG__ === "undefined" ? undefined : __WHEREAMI_PKG__;
-}
-
 /**
  * SvelteKit never runs pages through Vite's `transformIndexHtml` (its own Vite plugin forces
- * `appType: "custom"`, which is what disables that hook), so the regular plugin is a no-op
- * there. This does the same favicon/title/banner/badge injection through SvelteKit's own
- * `transformPageChunk` instead — add it to `hooks.server.ts`:
+ * `appType: "custom"`, which is what disables that hook), so the regular `whereami()` plugin
+ * is a no-op there and isn't needed. This does the same favicon/title/banner/badge injection
+ * through SvelteKit's own `transformPageChunk` instead — add it to `hooks.server.ts`:
  *
  * ```ts
  * import { sequence } from "@sveltejs/kit/hooks";
+ * import { name, version } from "../package.json";
  * import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
  *
- * export const handle = sequence(whereamiHandle(), ...yourOtherHandlers);
+ * export const handle = sequence(whereamiHandle({ pkg: { name, version } }), ...yourHandlers);
  * ```
  *
- * Also add the regular `whereami()` plugin to `vite.config.ts` alongside `sveltekit()` —
- * it no longer does anything to the HTML there, but it bakes the resolved package
- * name/version into the server bundle at build time, which is what lets this work on
- * edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) with no real
- * filesystem at request time. Without it, name/version fall back to reading
- * `package.json` off disk at request time (fine on Node-based deployments, but silently
- * `app@0.0.0` on edge runtimes) — pass `pkg: { name, version }` directly to override
- * either way. A custom `favicon.path` is still unreachable on edge runtimes either way;
- * the generated letter icon is used instead, correctly once the name is resolved.
+ * The `pkg` import is the reliable way to label the banner/badge on edge/isolate runtimes
+ * (Cloudflare Workers, Vercel Edge, Deno Deploy) that have no filesystem at request time:
+ * importing `package.json` inlines those strings into your (always-bundled) `hooks.server.ts`
+ * at build time. Omit `pkg` and it falls back to reading `package.json` off disk at request
+ * time — fine on Node-based deployments, but silently `app@0.0.0` on edge runtimes. A custom
+ * `favicon.path` is likewise unreachable without a filesystem; the generated letter icon is
+ * used instead, correctly once the name is resolved.
  */
 export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const detect = options.detect ?? defaultDetect;
@@ -72,9 +63,9 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const envKey = detect(ctx);
 	const envConfig: EnvironmentConfig = environments[envKey] ?? {};
 
-	const pkgPromise: Promise<PkgInfo> = Promise.resolve(options.pkg ?? buildTimePkg()).then(
-		(pkg) => pkg ?? readPkgInfo(root, options.packageJsonPath),
-	);
+	const pkgPromise: Promise<PkgInfo> = options.pkg
+		? Promise.resolve(options.pkg)
+		: readPkgInfo(root, options.packageJsonPath);
 	let faviconPromise: Promise<FaviconTag | null> | null = null;
 
 	function computeFavicon(): Promise<FaviconTag | null> {
