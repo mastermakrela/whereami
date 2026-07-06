@@ -52,6 +52,24 @@ export async function findFaviconSource(
 	return null;
 }
 
+/** Tint `source` if given, otherwise generate the default letter icon; never throws. */
+export async function resolveFavicon(
+	source: string | null,
+	color: string,
+	pkgName: string,
+): Promise<FaviconResult> {
+	if (!source) return { ext: "svg", content: generateDefaultIcon(color, pkgName) };
+	try {
+		return await tintFavicon(source, color);
+	} catch (err) {
+		if (err instanceof UnsupportedFaviconError) {
+			console.warn(`[vite-plugin-whereami] ${err.message} — generating a default icon instead`);
+			return { ext: "svg", content: generateDefaultIcon(color, pkgName) };
+		}
+		throw err;
+	}
+}
+
 /**
  * Recolor an image while preserving its shape: hue/saturation come from `color`,
  * lightness comes from the original pixel. Equivalent to a template/tint-icon effect.

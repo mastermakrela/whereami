@@ -3,11 +3,9 @@ import { loadEnv } from "vite";
 import { defaultDetect } from "./detect.js";
 import {
 	type FaviconResult,
-	UnsupportedFaviconError,
 	faviconMimeType,
 	findFaviconSource,
-	generateDefaultIcon,
-	tintFavicon,
+	resolveFavicon,
 } from "./favicon.js";
 import {
 	applyTitlePrefix,
@@ -17,13 +15,9 @@ import {
 	metaTags,
 	stripFaviconLinks,
 } from "./html.js";
+import { DEFAULT_ENVIRONMENTS, resolveBanner, resolveBadge } from "./options.js";
 import { type PkgInfo, readPkgInfo } from "./pkg.js";
-import type {
-	EnvironmentConfig,
-	ResolvedBadgeOptions,
-	ResolvedBannerOptions,
-	WhereAmIOptions,
-} from "./types.js";
+import type { EnvironmentConfig, WhereAmIOptions } from "./types.js";
 
 export type {
 	WhereAmIOptions,
@@ -34,32 +28,10 @@ export type {
 	BadgeOptions,
 } from "./types.js";
 
-const DEFAULT_ENVIRONMENTS: Record<string, EnvironmentConfig> = {
-	prod: {},
-	staging: { color: "#f59e0b", titlePrefix: "🟠 " },
-	dev: { color: "#22c55e", titlePrefix: "🟢 " },
-};
-
 const FAVICON_BASENAME = "__whereami-favicon";
 
 function faviconFileNameFor(ext: "svg" | "png"): string {
 	return `${FAVICON_BASENAME}.${ext}`;
-}
-
-function resolveBanner(banner: WhereAmIOptions["banner"]): ResolvedBannerOptions {
-	const opts = typeof banner === "object" ? banner : {};
-	const enabled = banner !== false && (opts.enabled ?? true);
-	return {
-		enabled,
-		meta: enabled && (opts.meta ?? true),
-		console: enabled && (opts.console ?? true),
-		metaPrefix: opts.metaPrefix ?? "app",
-	};
-}
-
-function resolveBadge(badge: WhereAmIOptions["badge"]): ResolvedBadgeOptions {
-	const opts = typeof badge === "object" ? badge : {};
-	return { enabled: badge !== false && (opts.enabled ?? true) };
 }
 
 function joinUrl(base: string, fileName: string): string {
@@ -91,21 +63,9 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 		if (!faviconPromise) {
 			const promise: Promise<FaviconResult | null> = (async () => {
 				if (!faviconEnabled || !envConfig.color) return null;
-				const color = envConfig.color;
 				const source = await findFaviconSource(root, options.favicon);
 				faviconSourcePath = source;
-				if (!source) return { ext: "svg", content: generateDefaultIcon(color, pkg.name) };
-				try {
-					return await tintFavicon(source, color);
-				} catch (err) {
-					if (err instanceof UnsupportedFaviconError) {
-						console.warn(
-							`[vite-plugin-whereami] ${err.message} — generating a default icon instead`,
-						);
-						return { ext: "svg", content: generateDefaultIcon(color, pkg.name) };
-					}
-					throw err;
-				}
+				return resolveFavicon(source, envConfig.color, pkg.name);
 			})();
 			faviconPromise = promise.catch((err) => {
 				// Don't cache a rejected promise forever — a transient failure (locked file,

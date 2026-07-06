@@ -54,8 +54,9 @@ export interface BadgeOptions {
 export interface WhereAmIOptions {
 	/**
 	 * Decide which environment we're running in. Return a key present in `environments`.
-	 * Defaults to checking `WHEREAMI_ENV`, then Vite's `mode` (production -> "prod", staging -> "staging",
-	 * everything else -> "dev").
+	 * Defaults to checking, in order: the `WHEREAMI_ENV` env var; known hosting platform env
+	 * vars (Vercel's `VERCEL_ENV`, Cloudflare Pages' `CF_PAGES`/`CF_PAGES_BRANCH`); then Vite's
+	 * `mode` (production -> "prod", staging -> "staging", everything else -> "dev").
 	 */
 	detect?: (ctx: DetectContext) => string;
 	/**

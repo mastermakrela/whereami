@@ -16,6 +16,28 @@ export function stripFaviconLinks(html: string): string {
 	return html.replace(STRIP_ICON_LINKS_RE, "");
 }
 
+function escapeAttr(value: string): string {
+	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function renderTag(tag: HtmlTagDescriptor): string {
+	const attrs = Object.entries(tag.attrs ?? {})
+		.map(([key, value]) => ` ${key}="${escapeAttr(String(value))}"`)
+		.join("");
+	if (tag.tag === "script") return `<script${attrs}>${tag.children ?? ""}</script>`;
+	return `<${tag.tag}${attrs}>`;
+}
+
+/**
+ * Insert `tags` right before `</head>`, for contexts (like SvelteKit's `transformPageChunk`)
+ * that hand us a raw HTML string instead of going through Vite's own tag-injection machinery.
+ */
+export function injectIntoHead(html: string, tags: HtmlTagDescriptor[]): string {
+	if (tags.length === 0) return html;
+	const insertion = tags.map(renderTag).join("");
+	return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${insertion}</head>`) : html;
+}
+
 export function faviconLinkTag(href: string, ext: "svg" | "png"): HtmlTagDescriptor {
 	return {
 		tag: "link",

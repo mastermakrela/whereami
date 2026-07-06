@@ -184,17 +184,30 @@ at build/dev-server-start time, not read at request time.
 
 ## SvelteKit
 
-Works the same way — add it to `vite.config.ts`:
+SvelteKit renders pages through its own SSR pipeline and never calls Vite's
+`transformIndexHtml` hook, so the plugin above is a no-op there — adding it to
+`vite.config.ts` changes nothing. Use the `vite-plugin-whereami/sveltekit`
+entry point instead, which does the same favicon/title/banner/badge injection
+through SvelteKit's own `transformPageChunk`, in `hooks.server.ts`:
 
 ```ts
-import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
-import whereami from "vite-plugin-whereami";
+// src/hooks.server.ts
+import { sequence } from "@sveltejs/kit/hooks";
+import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
 
-export default defineConfig({
-	plugins: [sveltekit(), whereami()],
-});
+export const handle = sequence(whereamiHandle() /* ...your other handlers */);
 ```
+
+`whereamiHandle()` takes the same options as the Vite plugin, with two
+differences:
+
+- There's no Vite `mode`/`command` at request time (this runs in the already-
+  built, deployed server), so the default detector trusts `NODE_ENV=production`
+  outright instead of only during `serve` — the `WHEREAMI_ENV` env var and the
+  Vercel/Cloudflare Pages checks work exactly the same way.
+- The favicon is inlined as a `data:` URI in the `<link>` tag rather than served
+  from a separate emitted file, since there's no Vite build pipeline to emit
+  assets into at request time.
 
 ## Full options reference
 
