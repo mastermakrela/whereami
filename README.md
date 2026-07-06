@@ -17,6 +17,28 @@ per environment to keep tabs visually distinct.
 bun add -D vite-plugin-whereami
 ```
 
+### Or, let an AI coding agent do it
+
+Paste this into Claude Code, OpenCode, Cursor, Copilot, or whatever agent you're using:
+
+```
+Install and configure vite-plugin-whereami (https://www.npmjs.com/package/vite-plugin-whereami)
+in this project:
+
+1. Add it as a dev dependency with this project's package manager.
+2. Add `whereami()` to the `plugins` array in the Vite config (vite.config.ts/js,
+   or the SvelteKit config — same place).
+3. Check how/where this project deploys (vercel.json, .vercel/, wrangler.toml or
+   wrangler.jsonc, CI/CD workflow files). Vercel and Cloudflare Pages are
+   auto-detected out of the box, so usually nothing else is needed. If it deploys
+   somewhere else, or the default prod/staging/dev mapping doesn't match this
+   project's branches/environments, add a custom `detect` option per
+   https://github.com/mastermakrela/whereami#environment-detection.
+4. Leave favicon tinting, the build-info banner, and the on-screen badge at their
+   defaults — don't enable extra options unless asked. Full reference:
+   https://github.com/mastermakrela/whereami
+```
+
 ## Quick start
 
 ```ts
