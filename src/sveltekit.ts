@@ -1,7 +1,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { FALLBACK_COLOR, renderBadgeSvg } from "./badge-svg.js";
 import { defaultDetect } from "./detect.js";
-import { faviconMimeType, findFaviconSource, resolveFavicon } from "./favicon.js";
+import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
 import {
 	applyTitlePrefix,
 	badgeTag,
@@ -117,7 +117,14 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const badgeEndpoint = resolveBadgeEndpoint(options.badgeEndpoint);
 	const metadata = options.metadata ?? {};
 	const faviconEnabled = options.favicon?.enabled ?? true;
-	const root = process.cwd();
+
+	// `process` is not defined at all on workerd without the `nodejs_compat` flag (and is
+	// partial on other isolate runtimes), so reach for it defensively — an env-less runtime
+	// just falls through to the "dev" default, which is exactly what an unrecognized
+	// environment should look like. Pass `detect` to key off `platform.env` instead.
+	const proc = typeof process === "undefined" ? undefined : process;
+	const env = (proc?.env ?? {}) as Record<string, string>;
+	const root = proc?.cwd?.() ?? ".";
 
 	// There's no Vite "mode"/"command" at request time here (this runs in the already-built,
 	// deployed server, not under Vite), so unlike the Vite plugin, NODE_ENV is trusted whenever
@@ -125,9 +132,9 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	// only to work around `vite build` itself force-setting NODE_ENV=production, which doesn't
 	// apply to a running server process.
 	const ctx: DetectContext = {
-		mode: process.env.NODE_ENV === "production" ? "production" : "development",
+		mode: env.NODE_ENV === "production" ? "production" : "development",
 		command: "serve",
-		env: process.env as Record<string, string>,
+		env,
 	};
 	const envKey = detect(ctx);
 	const envConfig: EnvironmentConfig = environments[envKey] ?? {};
@@ -168,12 +175,7 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 				const source = await findFaviconSource(root, options.favicon);
 				const pkg = await pkgPromise;
 				const favicon = await resolveFavicon(source, envConfig.color as string, pkg.name);
-				const buffer =
-					typeof favicon.content === "string" ? Buffer.from(favicon.content) : favicon.content;
-				return {
-					href: `data:${faviconMimeType(favicon.ext)};base64,${buffer.toString("base64")}`,
-					ext: favicon.ext,
-				};
+				return { href: faviconDataUri(favicon), ext: favicon.ext };
 			})();
 		}
 		return faviconPromise;

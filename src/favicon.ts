@@ -1,12 +1,10 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { hexToHsl, hslToRgb } from "./color.js";
+import { importUnbundled, loadNodeIO, type NodeIO } from "./node-io.js";
 import type { FaviconOptions } from "./types.js";
 
 export interface FaviconResult {
 	ext: "svg" | "png";
-	content: string | Buffer;
+	content: string | Uint8Array;
 }
 
 /** Matches an existing favicon `<link>` tag, shared with `stripFaviconLinks` in html.ts. */
@@ -19,33 +17,74 @@ export function faviconMimeType(ext: "svg" | "png"): string {
 	return ext === "svg" ? "image/svg+xml" : "image/png";
 }
 
-/** Find the project's existing favicon: explicit option > index.html <link> > common defaults. */
+/**
+ * Inline a resolved favicon as a `data:` URI, for the SvelteKit handle — there's no Vite
+ * build pipeline to emit an asset file into at request time. Encoded via `btoa` rather than
+ * `Buffer`, which doesn't exist on edge/isolate runtimes.
+ */
+export function faviconDataUri(favicon: FaviconResult): string {
+	const bytes =
+		typeof favicon.content === "string"
+			? new TextEncoder().encode(favicon.content)
+			: favicon.content;
+	let binary = "";
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return `data:${faviconMimeType(favicon.ext)};base64,${btoa(binary)}`;
+}
+
+async function exists(io: NodeIO, target: string): Promise<boolean> {
+	try {
+		await io.fs.stat(target);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Find the project's existing favicon: explicit option > index.html <link> > common defaults.
+ * Returns null on runtimes without a filesystem — the caller falls back to the generated
+ * letter icon, which needs no disk access.
+ */
 export async function findFaviconSource(
 	root: string,
 	options: FaviconOptions | undefined,
 ): Promise<string | null> {
+	const io = await loadNodeIO();
+	if (!io) {
+		if (options?.path) {
+			console.warn(
+				`[vite-plugin-whereami] favicon.path "${options.path}" can't be read without a filesystem (edge/isolate runtime) — generating a default icon instead`,
+			);
+		}
+		return null;
+	}
+
 	if (options?.path) {
-		const resolved = path.resolve(root, options.path);
-		if (!existsSync(resolved)) {
+		const resolved = io.path.resolve(root, options.path);
+		if (!(await exists(io, resolved))) {
 			throw new Error(`whereami: favicon.path "${options.path}" does not exist`);
 		}
 		return resolved;
 	}
 
-	const indexPath = path.join(root, "index.html");
-	if (existsSync(indexPath)) {
-		const html = await readFile(indexPath, "utf-8");
+	const indexPath = io.path.join(root, "index.html");
+	if (await exists(io, indexPath)) {
+		const html = await io.fs.readFile(indexPath, "utf-8");
 		const linkMatch = html.match(ICON_LINK_RE)?.[0];
 		const href = linkMatch?.match(HREF_RE)?.[1];
 		if (href && !href.startsWith("http") && !href.startsWith("data:")) {
-			const resolved = path.resolve(root, href.replace(/^\//, ""));
-			if (existsSync(resolved)) return resolved;
+			const resolved = io.path.resolve(root, href.replace(/^\//, ""));
+			if (await exists(io, resolved)) return resolved;
 		}
 	}
 
+	// Sequential on purpose: `DEFAULT_CANDIDATES` is in preference order and the first hit
+	// wins, so checking them in parallel would only stat files we don't need.
 	for (const candidate of DEFAULT_CANDIDATES) {
-		const resolved = path.join(root, candidate);
-		if (existsSync(resolved)) return resolved;
+		const resolved = io.path.join(root, candidate);
+		// oxlint-disable-next-line no-await-in-loop
+		if (await exists(io, resolved)) return resolved;
 	}
 
 	return null;
@@ -74,15 +113,20 @@ export async function resolveFavicon(
  * lightness comes from the original pixel. Equivalent to a template/tint-icon effect.
  */
 export async function tintFavicon(sourcePath: string, color: string): Promise<FaviconResult> {
-	const ext = path.extname(sourcePath).toLowerCase();
+	// Cached, and always resolved here: `sourcePath` can only have come from
+	// `findFaviconSource`, which returns null when there is no filesystem.
+	const io = await loadNodeIO();
+	if (!io) throw new Error("whereami: no filesystem available to read the favicon");
+
+	const ext = io.path.extname(sourcePath).toLowerCase();
 
 	if (ext === ".svg") {
-		const svg = await readFile(sourcePath, "utf-8");
+		const svg = await io.fs.readFile(sourcePath, "utf-8");
 		return { ext: "svg", content: tintSvg(svg, color) };
 	}
 
 	if (ext === ".png") {
-		const buffer = await readFile(sourcePath);
+		const buffer = await io.fs.readFile(sourcePath);
 		return { ext: "png", content: await tintPng(buffer, color) };
 	}
 
@@ -113,11 +157,12 @@ export function tintSvg(svg: string, color: string): string {
 
 /**
  * Per-pixel recolor: keep each pixel's lightness, replace its hue/saturation with `color`'s.
- * `pngjs` is imported dynamically so it (and its `zlib`/`util`/`buffer` needs) only load when
- * a `.png` favicon is actually tinted — the default SVG letter icon never pulls it in.
+ * `pngjs` is loaded through `importUnbundled` so it (and its `zlib`/`util`/`stream` needs)
+ * only load when a `.png` favicon is actually tinted — which requires a filesystem, so an
+ * edge bundle must never pull it in. The default SVG letter icon doesn't need it either.
  */
 export async function tintPng(buffer: Buffer, color: string): Promise<Buffer> {
-	const { PNG } = await import("pngjs");
+	const { PNG } = await importUnbundled<typeof import("pngjs")>("pngjs");
 	const { h, s } = hexToHsl(color);
 	const png = PNG.sync.read(buffer);
 

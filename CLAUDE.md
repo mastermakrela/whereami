@@ -1,0 +1,42 @@
+# vite-plugin-whereami
+
+A Vite plugin (`src/index.ts`) plus a SvelteKit `handle` (`src/sveltekit.ts`) that tint the
+favicon, prefix the page title, and inject a build-info banner/badge per environment.
+
+## Never import Node builtins where the SvelteKit entry can reach them
+
+`src/sveltekit.ts` runs **inside the deployed server**, which is very often an edge/isolate
+runtime — Cloudflare Workers, Vercel Edge, Deno Deploy. There is no filesystem there, and on
+workerd `node:*`, `Buffer` and even `process` don't exist at all unless the app opts into the
+`nodejs_compat` compatibility flag. `whereamiHandle()` must work **without that flag**.
+
+Concretely, in any module reachable from `src/sveltekit.ts`:
+
+- **No static `import ... from "node:fs" / "node:path" / …`.** Not even a dynamic
+  `import("node:fs")` with a literal specifier — bundlers statically analyse those too and
+  fail the build with _"add the nodejs_compat compatibility flag"_ over a code path that
+  could never run on that runtime.
+- **No `Buffer`** (use `TextEncoder` + `btoa`, see `faviconDataUri`), **no bare `process`**
+  (go through the `typeof process === "undefined"` guard in `whereamiHandle`), no
+  `node:crypto` (see the hand-rolled `fnv1aHex`).
+- **No static import of a Node-only npm package** either — `pngjs` drags in
+  `zlib`/`stream`/`util` and breaks the build exactly the same way.
+
+The one sanctioned escape hatch is `importUnbundled()` in `src/node-io.ts`: it passes the
+specifier as a _variable_, so no bundler follows it, and it only resolves at runtime on
+runtimes that actually have the module. Every caller must have a working no-filesystem
+fallback (`loadNodeIO()` returns `null`; `readPkgInfo` falls back to `app@0.0.0` with a
+warning; `findFaviconSource` returns `null` and the generated letter icon is used).
+
+`test/edge.test.ts` enforces this by bundling `src/sveltekit.ts` with esbuild at
+`platform: "neutral"` — no Node builtins available — and asserting the build succeeds. Unit
+tests all run on Node, where a stray `node:fs` import is invisible, so that bundle test is the
+only thing standing between a refactor and a broken Workers deploy. Verify by hand with a
+throwaway worker + `wrangler dev --local` and **no** `compatibility_flags`.
+
+## Conventions
+
+- `bun` for everything (`bun run test`, `bun run typecheck`, `bun run build`, `bun run lint`).
+- Formatting/linting via `oxfmt`/`oxlint`, tabs, double quotes.
+- User-facing changes need a changeset in `.changeset/` (`minor` for features, `patch` for
+  fixes) — the release flow is changesets → npm.

@@ -1,6 +1,6 @@
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
-import { generateDefaultIcon, tintPng, tintSvg } from "../src/favicon.js";
+import { faviconDataUri, generateDefaultIcon, tintPng, tintSvg } from "../src/favicon.js";
 
 describe("tintSvg", () => {
 	it("wraps the svg content in a tinting filter", () => {
@@ -40,6 +40,22 @@ describe("tintPng", () => {
 		expect(tinted.data[3]).toBe(255);
 		// transparent pixel keeps alpha 0
 		expect(tinted.data[7]).toBe(0);
+	});
+});
+
+describe("faviconDataUri", () => {
+	it("base64-encodes svg content, including non-ASCII, without Buffer", () => {
+		const uri = faviconDataUri({ ext: "svg", content: "<svg>ü</svg>" });
+		expect(uri.startsWith("data:image/svg+xml;base64,")).toBe(true);
+		const decoded = new TextDecoder().decode(
+			Uint8Array.from(atob(uri.slice("data:image/svg+xml;base64,".length)), (c) => c.charCodeAt(0)),
+		);
+		expect(decoded).toBe("<svg>ü</svg>");
+	});
+
+	it("base64-encodes binary png content", () => {
+		const uri = faviconDataUri({ ext: "png", content: new Uint8Array([137, 80, 78, 71]) });
+		expect(uri).toBe("data:image/png;base64,iVBORw==");
 	});
 });
 

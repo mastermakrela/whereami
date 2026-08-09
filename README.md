@@ -252,8 +252,14 @@ request time**, including on edge/isolate runtimes (Cloudflare Workers, Vercel
 Edge, Deno Deploy) that don't have one: the import is inlined into your
 `hooks.server.ts` — always part of the server bundle — at build time. Omit
 `pkg` and it falls back to reading `package.json` off disk at request time
-instead — fine on Node-based deployments, but silently `app@0.0.0` on edge
-runtimes.
+instead — fine on Node-based deployments; on an edge runtime it logs a one-time
+warning and labels the app `app@0.0.0`.
+
+The handle itself is runtime-agnostic either way: it never statically imports a
+Node builtin (or `Buffer`, or `process`), so a Cloudflare Workers deploy needs
+**no `nodejs_compat` compatibility flag** to use it. Node's `fs` is loaded
+lazily, only on runtimes that have it, purely to serve that `package.json`
+fallback and to read a favicon off disk.
 
 `whereamiHandle()` takes the same options as the Vite plugin, with two other
 differences:
