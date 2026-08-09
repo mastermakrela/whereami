@@ -11,7 +11,7 @@
 	"arrowParens": "always",
 	"bracketSameLine": false,
 	"bracketSpacing": true,
-	"ignorePatterns": ["dist", "test/fixtures", "*.tsbuildinfo"],
+	"ignorePatterns": ["dist", "test/fixtures", "*.tsbuildinfo", "CHANGELOG.md"],
 	"sortImports": {
 		"partitionByNewline": true,
 		"newlinesBetween": false
