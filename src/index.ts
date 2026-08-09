@@ -26,6 +26,7 @@ export type {
 	FaviconOptions,
 	BannerOptions,
 	BadgeOptions,
+	BadgeEndpointOptions,
 } from "./types.js";
 
 const FAVICON_BASENAME = "__whereami-favicon";

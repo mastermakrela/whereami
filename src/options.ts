@@ -1,5 +1,6 @@
 import type {
 	EnvironmentConfig,
+	ResolvedBadgeEndpointOptions,
 	ResolvedBadgeOptions,
 	ResolvedBannerOptions,
 	WhereAmIOptions,
@@ -25,4 +26,21 @@ export function resolveBanner(banner: WhereAmIOptions["banner"]): ResolvedBanner
 export function resolveBadge(badge: WhereAmIOptions["badge"]): ResolvedBadgeOptions {
 	const opts = typeof badge === "object" ? badge : {};
 	return { enabled: badge !== false && (opts.enabled ?? true) };
+}
+
+export function resolveBadgeEndpoint(
+	options: WhereAmIOptions["badgeEndpoint"],
+): ResolvedBadgeEndpointOptions | null {
+	// An empty/blank `path` (an unset env var threaded into the config, say) would normalize to
+	// "/" and make the badge swallow the site root — treat it as "not configured" instead.
+	if (!options) return null;
+	const raw = options.path.trim();
+	if (!raw || raw === "/") return null;
+	const path = raw.startsWith("/") ? raw : `/${raw}`;
+	return {
+		path,
+		label: options.label ?? "deployed",
+		show: options.show ?? ["version"],
+		color: options.color,
+	};
 }

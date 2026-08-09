@@ -37,6 +37,23 @@ async function render(
 	return response.text();
 }
 
+async function resolvePage() {
+	return new Response("<html><head></head><body>page</body></html>");
+}
+
+/** Fires a plain (non-page) request straight at the handle, bypassing `resolve` entirely. */
+async function request(
+	handle: ReturnType<typeof whereamiHandle>,
+	pathname: string,
+	headers: Record<string, string> = {},
+) {
+	const event = {
+		url: new URL(pathname, "http://localhost"),
+		request: new Request(new URL(pathname, "http://localhost"), { headers }),
+	} as never;
+	return handle({ event, resolve: resolvePage } as never);
+}
+
 const originalNodeEnv = process.env.NODE_ENV;
 const originalWhereamiEnv = process.env.WHEREAMI_ENV;
 
@@ -157,5 +174,202 @@ describe("whereamiHandle", () => {
 		expect(html).toContain('name="app-name" content="edge-app"');
 		expect(html).toContain('name="app-version" content="9.9.9"');
 		expect(html).not.toContain('content="app"');
+	});
+
+	describe("badgeEndpoint", () => {
+		it("leaves every path untouched when badgeEndpoint is unset", async () => {
+			const response = await request(
+				whereamiHandle({ detect: () => "dev", pkg: { name: "app", version: "1.0.0" } }),
+				"/_whereami/badge.svg",
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toContain("page");
+		});
+
+		it("serves the SVG badge at the configured path", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "dev",
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: { path: "/_whereami/badge.svg" },
+				}),
+				"/_whereami/badge.svg",
+			);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("content-type")).toBe("image/svg+xml; charset=utf-8");
+			const body = await response.text();
+			expect(body).toContain("v1.0.0");
+		});
+
+		it("renders the page normally for a different path (exact match, not a prefix)", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "dev",
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: { path: "/_whereami/badge.svg" },
+				}),
+				"/_whereami/badge.svg/extra",
+			);
+
+			expect(response.headers.get("content-type")).not.toBe("image/svg+xml; charset=utf-8");
+			expect(await response.text()).toContain("page");
+		});
+
+		it("includes name, version, and environment when show lists all three", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "staging",
+					pkg: { name: "my-app", version: "1.0.0" },
+					badgeEndpoint: { path: "/badge.svg", show: ["name", "version", "environment"] },
+				}),
+				"/badge.svg",
+			);
+
+			const body = await response.text();
+			expect(body).toContain("my-app v1.0.0 staging");
+		});
+
+		it("defaults show to just the version, excluding name and environment", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "staging",
+					pkg: { name: "my-app", version: "1.0.0" },
+					badgeEndpoint: { path: "/badge.svg" },
+				}),
+				"/badge.svg",
+			);
+
+			const body = await response.text();
+			expect(body).toContain("v1.0.0");
+			expect(body).not.toContain("my-app");
+			expect(body).not.toContain("staging");
+		});
+
+		it("never leaks metadata into the badge body", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "dev",
+					pkg: { name: "my-app", version: "1.0.0" },
+					metadata: { secret: "do-not-leak" },
+					badgeEndpoint: { path: "/badge.svg", show: ["name", "version", "environment"] },
+				}),
+				"/badge.svg",
+			);
+
+			const body = await response.text();
+			expect(body).not.toContain("secret");
+			expect(body).not.toContain("do-not-leak");
+		});
+
+		it("returns 304 when if-none-match matches the current etag", async () => {
+			const handle = whereamiHandle({
+				detect: () => "dev",
+				pkg: { name: "app", version: "1.0.0" },
+				badgeEndpoint: { path: "/badge.svg" },
+			});
+
+			const first = await request(handle, "/badge.svg");
+			const etag = first.headers.get("etag");
+			expect(etag).toBeTruthy();
+
+			const second = await request(handle, "/badge.svg", { "if-none-match": etag ?? "" });
+			expect(second.status).toBe(304);
+			expect(await second.text()).toBe("");
+		});
+
+		// A proxy that re-encodes the body (Cloudflare gzipping the SVG) weakens the strong tag
+		// on the way out, and clients may send a list — a byte-equality check would miss both and
+		// silently serve a full 200 forever.
+		it.each([
+			["weakened by a proxy", (etag: string) => `W/${etag}`],
+			["sent as part of a list", (etag: string) => `"stale", ${etag}`],
+			["the wildcard", () => "*"],
+		])("returns 304 when if-none-match is %s", async (_label, makeHeader) => {
+			const handle = whereamiHandle({
+				detect: () => "dev",
+				pkg: { name: "app", version: "1.0.0" },
+				badgeEndpoint: { path: "/badge.svg" },
+			});
+
+			const first = await request(handle, "/badge.svg");
+			const etag = first.headers.get("etag") ?? "";
+
+			const second = await request(handle, "/badge.svg", { "if-none-match": makeHeader(etag) });
+			expect(second.status).toBe(304);
+		});
+
+		it("still serves 200 when if-none-match holds a different etag", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "dev",
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: { path: "/badge.svg" },
+				}),
+				"/badge.svg",
+				{ "if-none-match": '"deadbeef"' },
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toContain("v1.0.0");
+		});
+
+		it("drops an unrecognized show field instead of rendering the version twice", async () => {
+			const response = await request(
+				whereamiHandle({
+					detect: () => "staging",
+					pkg: { name: "my-app", version: "1.0.0" },
+					// `"env"` is a plausible typo for `"environment"` and only TS would catch it.
+					badgeEndpoint: {
+						path: "/badge.svg",
+						show: ["name", "env" as "environment", "version"],
+					},
+				}),
+				"/badge.svg",
+			);
+
+			expect(await response.text()).toContain("my-app v1.0.0");
+		});
+
+		it.each(["", "   ", "/"])(
+			"ignores badgeEndpoint entirely for the useless path %j",
+			async (badgePath) => {
+				const response = await request(
+					whereamiHandle({
+						detect: () => "dev",
+						pkg: { name: "app", version: "1.0.0" },
+						badgeEndpoint: { path: badgePath },
+					}),
+					"/",
+				);
+
+				expect(await response.text()).toContain("page");
+			},
+		);
+
+		it("lets badgeEndpoint.color override the environment color", async () => {
+			const withOverride = await request(
+				whereamiHandle({
+					detect: () => "staging",
+					environments: { staging: { color: "#f59e0b" } },
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: { path: "/badge.svg", color: "#ff00ff" },
+				}),
+				"/badge.svg",
+			);
+			const withoutOverride = await request(
+				whereamiHandle({
+					detect: () => "staging",
+					environments: { staging: { color: "#f59e0b" } },
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: { path: "/badge.svg" },
+				}),
+				"/badge.svg",
+			);
+
+			expect(await withOverride.text()).toContain("#ff00ff");
+			expect(await withoutOverride.text()).toContain("#f59e0b");
+		});
 	});
 });

@@ -171,6 +171,44 @@ whereami({ badge: { enabled: true } });
 whereami({ badge: false });
 ```
 
+## Served SVG badge (SvelteKit)
+
+`whereamiHandle()` can also serve a small SVG status badge at a fixed URL, so
+a GitLab/GitHub project badge can point at your _running deployment_ and show
+the live version — no third-party badge service, no CI step keeping a badge
+image in sync:
+
+```ts
+whereamiHandle({
+	pkg: { name, version },
+	badgeEndpoint: {
+		path: "/_whereami/badge.svg", // required — setting this enables the feature
+		label: "deployed", // default
+		show: ["version"], // default; also: "name", "environment"
+		color: "#0b7285", // default: the environment's color, else this teal
+	},
+});
+```
+
+Point a GitLab project badge at it under **Settings → General → Badges**:
+
+```
+Badge image URL: https://your-app.example.com/_whereami/badge.svg
+Link:            https://your-app.example.com
+```
+
+**This endpoint is public and unauthenticated** — anyone who knows (or
+guesses) the path can request it, with no way to gate access here. It
+deliberately renders only the fields listed in `show`; it never exposes
+`metadata`, environment variables, or anything else. Responses are served
+with `cache-control: no-cache` and an `ETag` (so repeat requests get a cheap
+`304`) — the whole point is that the badge always reflects what's currently
+deployed, not a cached snapshot.
+
+It only exists on `whereamiHandle()`, not the Vite plugin: a plain Vite app
+is just static files in production, with no server left at request time to
+answer this request.
+
 ## Custom metadata
 
 Anything you pass to `metadata` shows up in both the console banner (as a
@@ -246,6 +284,12 @@ interface WhereAmIOptions {
 	metadata?: Record<string, unknown>; // must be JSON-serializable
 	packageJsonPath?: string; // default: "package.json"
 	pkg?: { name: string; version: string }; // bypasses packageJsonPath/fs when set
+	badgeEndpoint?: {
+		path: string; // e.g. "/_whereami/badge.svg" — required, enables the feature
+		label?: string; // default: "deployed"
+		show?: Array<"name" | "version" | "environment">; // default: ["version"]
+		color?: string; // default: the environment's color, else "#0b7285"
+	}; // SvelteKit only, see "Served SVG badge" above
 }
 ```
 
