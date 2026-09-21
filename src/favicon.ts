@@ -11,7 +11,21 @@ export interface FaviconResult {
 export const ICON_LINK_RE = /<link\s+[^>]*rel=["'](?:shortcut icon|icon)["'][^>]*>/i;
 const HREF_RE = /href=["']([^"']+)["']/i;
 
-const DEFAULT_CANDIDATES = ["public/favicon.svg", "public/favicon.png", "public/favicon.ico"];
+// Preference order, first hit wins: Vite's own `public/` dir, then SvelteKit's
+// `static/` (its equivalent of `public/`), then the path `sv create` scaffolds
+// import the favicon from (src/lib/assets/favicon.svg, imported into the root
+// +layout.svelte's <svelte:head>) — so a fresh SvelteKit app's brand favicon is
+// found before we'd otherwise fall back to generating a letter icon.
+const DEFAULT_CANDIDATES = [
+	"public/favicon.svg",
+	"public/favicon.png",
+	"public/favicon.ico",
+	"static/favicon.svg",
+	"static/favicon.png",
+	"static/favicon.ico",
+	"src/lib/assets/favicon.svg",
+	"src/lib/assets/favicon.png",
+];
 
 export function faviconMimeType(ext: "svg" | "png"): string {
 	return ext === "svg" ? "image/svg+xml" : "image/png";

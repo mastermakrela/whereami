@@ -1,6 +1,17 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
-import { faviconDataUri, generateDefaultIcon, tintPng, tintSvg } from "../src/favicon.js";
+import {
+	faviconDataUri,
+	findFaviconSource,
+	generateDefaultIcon,
+	tintPng,
+	tintSvg,
+} from "../src/favicon.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const fixtures = path.join(here, "fixtures");
 
 describe("tintSvg", () => {
 	it("wraps the svg content in a tinting filter", () => {
@@ -56,6 +67,32 @@ describe("faviconDataUri", () => {
 	it("base64-encodes binary png content", () => {
 		const uri = faviconDataUri({ ext: "png", content: new Uint8Array([137, 80, 78, 71]) });
 		expect(uri).toBe("data:image/png;base64,iVBORw==");
+	});
+});
+
+describe("findFaviconSource", () => {
+	it("finds a favicon in SvelteKit's static/ dir", async () => {
+		const root = path.join(fixtures, "sveltekit-static");
+		const found = await findFaviconSource(root, undefined);
+		expect(found).toBe(path.join(root, "static/favicon.svg"));
+	});
+
+	it("finds a favicon at the sv create scaffold path, src/lib/assets/", async () => {
+		const root = path.join(fixtures, "sveltekit-assets");
+		const found = await findFaviconSource(root, undefined);
+		expect(found).toBe(path.join(root, "src/lib/assets/favicon.svg"));
+	});
+
+	it("prefers public/ over static/ when both exist", async () => {
+		const root = path.join(fixtures, "public-over-static");
+		const found = await findFaviconSource(root, undefined);
+		expect(found).toBe(path.join(root, "public/favicon.svg"));
+	});
+
+	it("returns null when no candidate exists", async () => {
+		const root = path.join(fixtures, "basic");
+		const found = await findFaviconSource(root, undefined);
+		expect(found).toBeNull();
 	});
 });
 
