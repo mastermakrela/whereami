@@ -6,7 +6,9 @@ import {
 	consoleBannerTag,
 	faviconLinkTag,
 	metaTags,
+	neutralizeFaviconLinks,
 	stripFaviconLinks,
+	titleKeeperTag,
 } from "../src/html.js";
 
 function names(tags: HtmlTagDescriptor[]) {
@@ -28,6 +30,78 @@ describe("stripFaviconLinks", () => {
 	it("removes existing icon link tags", () => {
 		const html = '<head><link rel="icon" href="/favicon.ico" /><title>x</title></head>';
 		expect(stripFaviconLinks(html)).toBe("<head><title>x</title></head>");
+	});
+});
+
+describe("neutralizeFaviconLinks", () => {
+	it('renames a double-quoted rel="icon" without touching position, href, or surrounding whitespace', () => {
+		const html = '<head>\n\t<link rel="icon" href="/favicon.ico" />\n\t<title>x</title>\n</head>';
+		const out = neutralizeFaviconLinks(html);
+		expect(out).toBe(
+			'<head>\n\t<link data-whereami-rel="icon" href="/favicon.ico" />\n\t<title>x</title>\n</head>',
+		);
+	});
+
+	it("renames a single-quoted rel", () => {
+		const html = "<link rel='icon' href='/favicon.ico' />";
+		expect(neutralizeFaviconLinks(html)).toBe(
+			"<link data-whereami-rel='icon' href='/favicon.ico' />",
+		);
+	});
+
+	it("renames shortcut icon, preserving the original rel value in the data attribute", () => {
+		const html = '<link rel="shortcut icon" href="/favicon.ico">';
+		expect(neutralizeFaviconLinks(html)).toBe(
+			'<link data-whereami-rel="shortcut icon" href="/favicon.ico">',
+		);
+	});
+
+	it("handles a self-closing tag", () => {
+		const html = '<link rel="icon" href="/favicon.svg"/>';
+		expect(neutralizeFaviconLinks(html)).toBe(
+			'<link data-whereami-rel="icon" href="/favicon.svg"/>',
+		);
+	});
+
+	it("is a no-op when there is no icon link", () => {
+		const html = "<head><title>x</title></head>";
+		expect(neutralizeFaviconLinks(html)).toBe(html);
+	});
+
+	it("neutralizes every icon link tag in the document", () => {
+		const html = '<link rel="icon" href="/a.ico" /><link rel="shortcut icon" href="/b.ico" />';
+		expect(neutralizeFaviconLinks(html)).toBe(
+			'<link data-whereami-rel="icon" href="/a.ico" /><link data-whereami-rel="shortcut icon" href="/b.ico" />',
+		);
+	});
+
+	it("preserves a Svelte head-hydration block's markers and node count around the tag", () => {
+		const html =
+			'<!--[--><link rel="icon" href="/favicon.svg" /><meta name="x" content="y"><!--]-->';
+		const out = neutralizeFaviconLinks(html);
+		expect(out).toBe(
+			'<!--[--><link data-whereami-rel="icon" href="/favicon.svg" /><meta name="x" content="y"><!--]-->',
+		);
+	});
+
+	it("is idempotent: applying it twice matches applying it once", () => {
+		const html = '<link rel="icon" href="/favicon.ico" />';
+		const once = neutralizeFaviconLinks(html);
+		expect(neutralizeFaviconLinks(once)).toBe(once);
+	});
+});
+
+describe("titleKeeperTag", () => {
+	it("builds an inline script containing the prefix", () => {
+		const tag = titleKeeperTag("🟢 ");
+		expect(tag.tag).toBe("script");
+		expect(tag.children).toContain("MutationObserver");
+		expect(tag.children).toContain(JSON.stringify("🟢 "));
+	});
+
+	it("guards MutationObserver access so it's a no-op in odd environments", () => {
+		const tag = titleKeeperTag("[QA] ");
+		expect(tag.children).toContain('typeof MutationObserver === "undefined"');
 	});
 });
 

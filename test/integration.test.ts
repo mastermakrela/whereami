@@ -36,6 +36,8 @@ describe("build", () => {
 		// banner still shows in prod by design — only favicon/title are untouched
 		expect(html).toContain('name="app-environment" content="prod"');
 		expect(html).toContain("fixture-basic@1.2.3");
+		// prod has no titlePrefix configured, so no title keeper script either.
+		expect(html).not.toContain("MutationObserver");
 	});
 
 	it("tints the title and generates a favicon in dev mode", async () => {
@@ -56,6 +58,9 @@ describe("build", () => {
 		expect(html).toContain('name="app-version" content="1.2.3"');
 		expect(html).toContain('name="app-environment" content="dev"');
 		expect(existsSync(path.join(basicRoot, "dist-test/__whereami-favicon.svg"))).toBe(true);
+		// A prefixed environment also gets the client-side title keeper, so the prefix survives
+		// a framework re-setting document.title after this SSR HTML hydrates.
+		expect(html).toContain("MutationObserver");
 	});
 
 	it("tints an existing favicon instead of generating a default one", async () => {

@@ -14,6 +14,7 @@ import {
 	faviconLinkTag,
 	metaTags,
 	stripFaviconLinks,
+	titleKeeperTag,
 } from "./html.js";
 import { DEFAULT_ENVIRONMENTS, resolveBanner, resolveBadge } from "./options.js";
 import { type PkgInfo, readPkgInfo } from "./pkg.js";
@@ -132,6 +133,13 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 		async transformIndexHtml(html) {
 			let out = applyTitlePrefix(html, envConfig.titlePrefix ?? "");
 			const tags = [];
+
+			// SSR gives the first paint the right title; the keeper re-applies it after any
+			// later client-side `document.title` write (e.g. a framework re-rendering <title>,
+			// or the app itself setting it on client-side navigation).
+			if (envConfig.titlePrefix) {
+				tags.push(titleKeeperTag(envConfig.titlePrefix));
+			}
 
 			const favicon = await computeFavicon();
 			if (favicon) {

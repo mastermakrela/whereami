@@ -27,7 +27,10 @@ export interface FaviconOptions {
 	/**
 	 * Path to the source favicon, relative to the project root.
 	 * When omitted, whereami looks for an existing `<link rel="icon">` in `index.html`,
-	 * then falls back to `public/favicon.svg`, `public/favicon.png`, `public/favicon.ico`.
+	 * then falls back to, in order: `public/favicon.{svg,png,ico}` (Vite), then
+	 * `static/favicon.{svg,png,ico}` (SvelteKit's static assets dir), then
+	 * `src/lib/assets/favicon.{svg,png}` (where `sv create` scaffolds the favicon
+	 * imported into the root `+layout.svelte`).
 	 * If nothing is found, a simple default icon is generated.
 	 */
 	path?: string;

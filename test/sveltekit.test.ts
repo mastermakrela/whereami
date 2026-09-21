@@ -145,6 +145,67 @@ describe("whereamiHandle", () => {
 		expect(html).toContain("<h1>hello</h1>");
 	});
 
+	it("injects the title keeper script when a titlePrefix is set", async () => {
+		const html = await render(
+			whereamiHandle({
+				detect: () => "qa",
+				environments: { qa: { color: "#ff00ff", titlePrefix: "[QA] " } },
+				packageJsonPath: basicPkgPath,
+			}),
+		);
+
+		expect(html).toContain("MutationObserver");
+		expect(html).toContain(JSON.stringify("[QA] "));
+	});
+
+	it("doesn't inject the title keeper script when there's no titlePrefix", async () => {
+		const html = await render(
+			whereamiHandle({ detect: () => "prod", packageJsonPath: basicPkgPath }),
+		);
+
+		expect(html).not.toContain("MutationObserver");
+	});
+
+	describe("favicon links inside Svelte's head-hydration block", () => {
+		// Svelte marks the hydratable head region with sibling comment nodes; older Svelte used
+		// `<!--[-->…<!--]-->`, current (5.56+) uses a per-render hash `<!--svelte-HASH-->…<!---->`.
+		// Deleting a node inside either block shifts the hydration cursor onto the wrong element
+		// and throws during hydration — so the fix must keep the original tag in place instead of
+		// removing it (see neutralizeFaviconLinks in src/html.ts).
+		const svelteHeadIcon = '<link rel="icon" href="/_app/immutable/assets/favicon.abc.svg" />';
+
+		it.each([
+			["legacy <!--[-->…<!--]--> markers", "<!--[-->", "<!--]-->"],
+			["current <!--svelte-HASH-->…<!----> markers", "<!--svelte-h4x0r-->", "<!---->"],
+		])("keeps the original tag in place for %s", async (_label, open, close) => {
+			const headChunk = `<html><head><title>My App</title>${open}${svelteHeadIcon}${close}</head><body>%sveltekit.body%`;
+			const html = await render(
+				whereamiHandle({
+					detect: () => "qa",
+					environments: { qa: { color: "#ff00ff" } },
+					packageJsonPath: basicPkgPath,
+				}),
+				[headChunk, BODY_CHUNK],
+			);
+
+			// The marker-delimited region is unchanged except for the rel rename: same position,
+			// same href, same surrounding text — no node was removed or reordered.
+			const between = html.slice(html.indexOf(open) + open.length, html.indexOf(close));
+			expect(between).toBe(
+				'<link data-whereami-rel="icon" href="/_app/immutable/assets/favicon.abc.svg" />',
+			);
+			expect(html).toContain(open);
+			expect(html).toContain(close);
+
+			// Exactly one rel="icon" in the whole document: ours, not the original.
+			// A negative lookbehind so this doesn't also match the neutralized
+			// `data-whereami-rel="icon"` (which ends in the same substring).
+			const relIconCount = (html.match(/(?<![\w-])rel="icon"/g) ?? []).length;
+			expect(relIconCount).toBe(1);
+			expect(html).toContain("data:image/svg+xml;base64,");
+		});
+	});
+
 	it("uses the default detector, trusting NODE_ENV=production outright (no Vite build step here)", async () => {
 		process.env.NODE_ENV = "production";
 		delete process.env.WHEREAMI_ENV;

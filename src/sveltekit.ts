@@ -9,7 +9,8 @@ import {
 	faviconLinkTag,
 	injectIntoHead,
 	metaTags,
-	stripFaviconLinks,
+	neutralizeFaviconLinks,
+	titleKeeperTag,
 } from "./html.js";
 import {
 	DEFAULT_ENVIRONMENTS,
@@ -208,8 +209,15 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 				let out = applyTitlePrefix(html, envConfig.titlePrefix ?? "");
 				const tags = [];
 
+				if (envConfig.titlePrefix) {
+					tags.push(titleKeeperTag(envConfig.titlePrefix));
+				}
+
 				if (favicon) {
-					out = stripFaviconLinks(out);
+					// Neutralize in place rather than strip: this HTML is SvelteKit's SSR head, which may
+					// still be inside Svelte's head-hydration block (see neutralizeFaviconLinks's doc
+					// comment in html.ts for why removing the node instead breaks hydration).
+					out = neutralizeFaviconLinks(out);
 					tags.push(faviconLinkTag(favicon.href, favicon.ext));
 				}
 

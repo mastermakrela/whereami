@@ -5,6 +5,12 @@ import type { ResolvedBannerOptions } from "./types.js";
 
 const TITLE_RE = /(<title[^>]*>)([\s\S]*?)(<\/title>)/i;
 const STRIP_ICON_LINKS_RE = new RegExp(`${ICON_LINK_RE.source}\\s*`, "gi");
+const NEUTRALIZE_ICON_LINKS_RE = new RegExp(ICON_LINK_RE.source, "gi");
+// The negative lookbehind keeps this from re-matching inside an already-neutralized
+// `data-whereami-rel="icon"` (which ends in the same "rel=..." substring) — without it, a
+// second pass (two handles in a `sequence`, or any re-transform) would double-prefix the
+// attribute into `data-whereami-data-whereami-rel="icon"`.
+const REL_ATTR_RE = /(?<![\w-])rel=(["'])(shortcut icon|icon)\1/i;
 
 export function applyTitlePrefix(html: string, prefix: string): string {
 	if (!prefix || !TITLE_RE.test(html)) return html;
@@ -14,6 +20,38 @@ export function applyTitlePrefix(html: string, prefix: string): string {
 /** Remove any existing favicon `<link>` tags so ours doesn't end up alongside a stale one. */
 export function stripFaviconLinks(html: string): string {
 	return html.replace(STRIP_ICON_LINKS_RE, "");
+}
+
+/**
+ * Like `stripFaviconLinks`, but for HTML that may be inside SvelteKit's head-hydration block
+ * (`<!--[-->…<!--]-->` on older Svelte, `<!--svelte-HASH-->…<!---->` on 5.56+): removing the
+ * element there shifts the hydration cursor onto the wrong node and throws
+ * `TypeError: element.getAttribute is not a function` ("Failed to hydrate"). Instead, rewrite
+ * the tag IN PLACE — same position, same `href`, whitespace around it untouched — renaming
+ * `rel="icon"` / `rel="shortcut icon"` to `data-whereami-rel="..."` so it's no longer an icon,
+ * while our own tinted `<link rel="icon">` is injected separately.
+ *
+ * This is safe against Svelte 5.56's hydration, verified against
+ * `svelte/src/internal/client/dom/elements/attributes.js`:
+ *  - The scaffold typically has a *dynamic* `href={favicon}` (an imported asset), so
+ *    `set_attribute` for `href` on a `LINK` element does run during hydration — but it stores
+ *    the current value, runs its dev-only src/hydration-mismatch check (which passes, since we
+ *    leave `href` byte-identical between server and client), and then early-returns without
+ *    ever calling `setAttribute`, specifically to avoid triggering a second network request.
+ *  - Static attributes (a plain `rel="icon"`, not `rel={...}`) aren't re-asserted during
+ *    hydration at all, so renaming it here survives untouched. Only a *dynamic* `rel={...}`
+ *    binding would restore `rel="icon"` on the next update — acceptable, since that's not the
+ *    common case this fixes.
+ * Node count and order inside the hydration block stay identical either way, and the result
+ * has exactly one `rel="icon"` in the document (ours), so nothing relies on "last icon wins".
+ */
+export function neutralizeFaviconLinks(html: string): string {
+	return html.replace(NEUTRALIZE_ICON_LINKS_RE, (tag) =>
+		tag.replace(
+			REL_ATTR_RE,
+			(_m, quote: string, relValue: string) => `data-whereami-rel=${quote}${relValue}${quote}`,
+		),
+	);
 }
 
 function escapeAttr(value: string): string {
@@ -86,6 +124,39 @@ export function metaTags(
 
 function scriptTag(children: string): HtmlTagDescriptor {
 	return { tag: "script", injectTo: "head", children };
+}
+
+/**
+ * Svelte's compiled `<title>` does `document.title = ...` unconditionally on every update
+ * (see `TitleElement.js` in the client transform), including right after hydration — so an
+ * SSR-only `applyTitlePrefix()` gets silently overwritten the moment the page hydrates. This
+ * keeps the prefix alive client-side: a `MutationObserver` on `document.head` re-applies it
+ * whenever `document.title` changes and doesn't already start with it, which also covers an
+ * SPA setting `document.title` again later (e.g. client-side navigation).
+ *
+ * The `document.title` *getter* normalizes ASCII whitespace (trims and collapses runs of it),
+ * so a raw prefix like `"🟢  "` never round-trips through it byte-for-byte — comparing against
+ * a normalized copy of the prefix is what makes the "already prefixed" check work, while the
+ * raw prefix is still what actually gets prepended. That same check doubles as the loop guard:
+ * setting `document.title` triggers another mutation, but by then the title already starts
+ * with the (normalized) prefix, so `ensure()` is a no-op on the reentrant call.
+ */
+function titleKeeperScript(prefix: string): string {
+	const normalizedPrefix = prefix.trim().replace(/\s+/g, " ");
+	return `(function(){
+var prefix = ${jsonForScript(prefix)};
+var normalizedPrefix = ${jsonForScript(normalizedPrefix)};
+if (typeof MutationObserver === "undefined" || !normalizedPrefix) return;
+function ensure(){
+  if (document.title.indexOf(normalizedPrefix) !== 0) document.title = prefix + document.title;
+}
+ensure();
+new MutationObserver(ensure).observe(document.head, { subtree: true, childList: true, characterData: true });
+})();`;
+}
+
+export function titleKeeperTag(prefix: string): HtmlTagDescriptor {
+	return scriptTag(titleKeeperScript(prefix));
 }
 
 export function consoleBannerTag(

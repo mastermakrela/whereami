@@ -68,11 +68,13 @@ Unknown modes default to `dev`'s tint on purpose — the whole point is to make 
 obvious when you're _not_ looking at production, so an unrecognized mode should
 look suspicious, not blend in.
 
-If your project already has a favicon (`<link rel="icon">` in `index.html`, or
-`public/favicon.{svg,png}`), it gets tinted (hue/saturation swapped for the
-environment color, lightness preserved — a shape-preserving recolor, not a
-flat overlay). If there's none, a simple icon is generated using the first
-letter of your `package.json` name.
+If your project already has a favicon (`<link rel="icon">` in `index.html`,
+`public/favicon.{svg,png}`, SvelteKit's `static/favicon.{svg,png}`, or the
+`src/lib/assets/favicon.{svg,png}` path the `sv create` scaffold uses), it
+gets tinted (hue/saturation swapped for the environment color, lightness
+preserved — a shape-preserving recolor, not a flat overlay). If there's none,
+a simple icon is generated using the first letter of your `package.json`
+name.
 
 ## Environment detection
 
@@ -273,6 +275,13 @@ differences:
   assets into at request time. A custom `favicon.path` is still unreachable on
   edge runtimes without a filesystem; the generated letter icon is used
   instead, correctly once the name is resolved.
+
+An icon declared in `<svelte:head>` (the default in `sv create` scaffolds) and
+a `titlePrefix` both keep working across hydration: the existing icon `<link>`
+is left in place — renamed to `data-whereami-rel` rather than removed — so
+Svelte's head-hydration cursor never lands on a missing node, and the title
+prefix is re-applied client-side by a small injected script, since Svelte's
+compiled `<title>` sets `document.title` again once the page hydrates.
 
 ## Full options reference
 
