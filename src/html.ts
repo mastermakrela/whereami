@@ -59,8 +59,14 @@ function escapeAttr(value: string): string {
 }
 
 function renderTag(tag: HtmlTagDescriptor): string {
+	// Same convention as Vite's own serializer: `true` renders a bare boolean attribute
+	// (`defer`), `false`/`undefined` omit it.
 	const attrs = Object.entries(tag.attrs ?? {})
-		.map(([key, value]) => ` ${key}="${escapeAttr(String(value))}"`)
+		.map(([key, value]) => {
+			if (value === true) return ` ${key}`;
+			if (value === false || value === undefined) return "";
+			return ` ${key}="${escapeAttr(String(value))}"`;
+		})
 		.join("");
 	if (tag.tag === "script") return `<script${attrs}>${tag.children ?? ""}</script>`;
 	return `<${tag.tag}${attrs}>`;
@@ -126,6 +132,11 @@ function scriptTag(children: string): HtmlTagDescriptor {
 	return { tag: "script", injectTo: "head", children };
 }
 
+/** A deferred external `<script src>` — allowed by a `script-src 'self'` CSP, unlike inline code. */
+export function externalScriptTag(src: string): HtmlTagDescriptor {
+	return { tag: "script", injectTo: "head", attrs: { src, defer: true } };
+}
+
 /**
  * Svelte's compiled `<title>` does `document.title = ...` unconditionally on every update
  * (see `TitleElement.js` in the client transform), including right after hydration — so an
@@ -141,7 +152,7 @@ function scriptTag(children: string): HtmlTagDescriptor {
  * setting `document.title` triggers another mutation, but by then the title already starts
  * with the (normalized) prefix, so `ensure()` is a no-op on the reentrant call.
  */
-function titleKeeperScript(prefix: string): string {
+export function titleKeeperScript(prefix: string): string {
 	const normalizedPrefix = prefix.trim().replace(/\s+/g, " ");
 	return `(function(){
 var prefix = ${jsonForScript(prefix)};
@@ -177,7 +188,7 @@ export function badgeTag(
 	return scriptTag(badgeScript(pkg, env, color, metadata));
 }
 
-function consoleBannerScript(
+export function consoleBannerScript(
 	pkg: Pkg,
 	env: string,
 	color: string,
@@ -193,7 +204,7 @@ function consoleBannerScript(
 );${hasMetadata ? `\nconsole.log(${jsonForScript(metadata)});` : ""}})();`;
 }
 
-function badgeScript(
+export function badgeScript(
 	pkg: Pkg,
 	env: string,
 	color: string,
