@@ -1,5 +1,11 @@
 # vite-plugin-whereami
 
+## 0.5.0
+
+### Minor Changes
+
+- 82f27c7: SvelteKit handle serves its banner/badge/title-keeper as one external script instead of inline `<script>` tags, so pages with a nonce-based or `'self'`-only Content-Security-Policy no longer block them.
+
 ## 0.4.2
 
 ### Patch Changes
