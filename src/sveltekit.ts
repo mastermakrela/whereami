@@ -4,13 +4,14 @@ import { defaultDetect } from "./detect.js";
 import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
 import {
 	applyTitlePrefix,
-	badgeTag,
-	consoleBannerTag,
+	badgeScript,
+	consoleBannerScript,
+	externalScriptTag,
 	faviconLinkTag,
 	injectIntoHead,
 	metaTags,
 	neutralizeFaviconLinks,
-	titleKeeperTag,
+	titleKeeperScript,
 } from "./html.js";
 import {
 	DEFAULT_ENVIRONMENTS,
@@ -26,14 +27,21 @@ import type {
 	WhereAmIOptions,
 } from "./types.js";
 
+/**
+ * Where the handle serves its title-keeper/console-banner/badge code. A literal root path:
+ * `kit.paths.base` isn't knowable from inside a hook, and SvelteKit 404s requests outside
+ * `base` before `handle` even runs — so apps with a `paths.base` can't load it yet.
+ */
+const SCRIPT_PATH = "/_whereami/whereami.js";
+
 interface FaviconTag {
 	href: string;
 	ext: "svg" | "png";
 }
 
 /**
- * Small non-cryptographic hash (32-bit FNV-1a) used only to derive a deterministic `ETag`
- * for the badge SVG. `node:crypto` is deliberately avoided so this keeps working on
+ * Small non-cryptographic hash (32-bit FNV-1a) used only to derive deterministic `ETag`s
+ * for the badge SVG and the served script. `node:crypto` is deliberately avoided so this keeps working on
  * edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) that don't have it.
  */
 function fnv1aHex(input: string): string {
@@ -109,6 +117,16 @@ function badgeValue(
  * (name/version/environment); `metadata` and everything else are never exposed. This exists
  * only here, not in the Vite plugin, because a plain Vite app is just static files in
  * production — there's no server left at request time to answer the request.
+ *
+ * The title keeper, console banner and corner badge are served the same way: as one external
+ * file at `/_whereami/whereami.js`, loaded by a single `<script src defer>` in the `<head>`
+ * instead of inline `<script>` tags. That keeps them working under a strict
+ * Content-Security-Policy (`script-src 'self'`, or SvelteKit's nonce-based `kit.csp`) with no
+ * nonce and no `'unsafe-inline'`. Like the badge endpoint, that path is public and answered
+ * before your other handlers run, so it exposes `metadata` to unauthenticated requests. Two
+ * limitations: an app with `kit.paths.base` can't load it (SvelteKit 404s paths outside
+ * `base` before any hook runs), and a fully static/prerendered site has no server left to
+ * answer it.
  */
 export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	const detect = options.detect ?? defaultDetect;
@@ -145,6 +163,33 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 		: readPkgInfo(root, options.packageJsonPath);
 	let faviconPromise: Promise<FaviconTag | null> | null = null;
 	let badgePromise: Promise<{ svg: string; etag: string }> | null = null;
+	let scriptPromise: Promise<{ js: string; etag: string }> | null = null;
+
+	const titleKeeperEnabled = Boolean(envConfig.titlePrefix);
+	const consoleBannerEnabled = banner.enabled && banner.console;
+	const badgeEnabled = badge.enabled && Boolean(envConfig.color);
+	const scriptEnabled = titleKeeperEnabled || consoleBannerEnabled || badgeEnabled;
+
+	/**
+	 * Same reasoning as `computeBadge`: every input is fixed for this handle's lifetime, so the
+	 * concatenated script and its `ETag` are built once.
+	 */
+	function computeScript(): Promise<{ js: string; etag: string }> {
+		if (!scriptPromise) {
+			scriptPromise = (async () => {
+				const pkg = await pkgPromise;
+				const parts: string[] = [];
+				if (titleKeeperEnabled) parts.push(titleKeeperScript(envConfig.titlePrefix as string));
+				if (consoleBannerEnabled) {
+					parts.push(consoleBannerScript(pkg, envKey, envConfig.color ?? "#6b7280", metadata));
+				}
+				if (badgeEnabled) parts.push(badgeScript(pkg, envKey, envConfig.color as string, metadata));
+				const js = parts.join("\n");
+				return { js, etag: `"${fnv1aHex(js)}"` };
+			})();
+		}
+		return scriptPromise;
+	}
 
 	/**
 	 * Every input (`pkg`, `envKey`, `badgeEndpoint`) is fixed for the lifetime of this handle and
@@ -183,6 +228,20 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	}
 
 	return async ({ event, resolve }) => {
+		if (scriptEnabled && event.url.pathname === SCRIPT_PATH) {
+			const { js, etag } = await computeScript();
+			const headers = {
+				"content-type": "text/javascript; charset=utf-8",
+				// Must pick up a redeploy (new version/metadata) on the next page load.
+				"cache-control": "no-cache, max-age=0, must-revalidate",
+				etag,
+			};
+			if (ifNoneMatchMatches(event.request.headers.get("if-none-match"), etag)) {
+				return new Response(null, { status: 304, headers });
+			}
+			return new Response(js, { headers });
+		}
+
 		if (badgeEndpoint && event.url.pathname === badgeEndpoint.path) {
 			const { svg, etag } = await computeBadge(badgeEndpoint);
 			const headers = {
@@ -209,10 +268,6 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 				let out = applyTitlePrefix(html, envConfig.titlePrefix ?? "");
 				const tags = [];
 
-				if (envConfig.titlePrefix) {
-					tags.push(titleKeeperTag(envConfig.titlePrefix));
-				}
-
 				if (favicon) {
 					// Neutralize in place rather than strip: this HTML is SvelteKit's SSR head, which may
 					// still be inside Svelte's head-hydration block (see neutralizeFaviconLinks's doc
@@ -223,13 +278,10 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 
 				if (banner.enabled) {
 					tags.push(...metaTags(banner, pkg, envKey));
-					if (banner.console) {
-						tags.push(consoleBannerTag(pkg, envKey, envConfig.color ?? "#6b7280", metadata));
-					}
 				}
 
-				if (badge.enabled && envConfig.color) {
-					tags.push(badgeTag(pkg, envKey, envConfig.color, metadata));
+				if (scriptEnabled) {
+					tags.push(externalScriptTag(SCRIPT_PATH));
 				}
 
 				return injectIntoHead(out, tags);

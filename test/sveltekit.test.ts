@@ -16,7 +16,10 @@ async function render(
 	handle: ReturnType<typeof whereamiHandle>,
 	chunks = [HEAD_CHUNK, BODY_CHUNK],
 ) {
-	const event = {} as never;
+	const event = {
+		url: new URL("/", "http://localhost"),
+		request: new Request("http://localhost/"),
+	} as never;
 	const resolve = async (
 		_event: unknown,
 		opts?: {
@@ -36,6 +39,11 @@ async function render(
 	const response = await handle({ event, resolve } as never);
 	return response.text();
 }
+
+const SCRIPT_PATH = "/_whereami/whereami.js";
+const SCRIPT_TAG = `<script src="${SCRIPT_PATH}" defer></script>`;
+/** Any `<script>` without a `src` attribute, i.e. inline code a strict CSP would block. */
+const INLINE_SCRIPT_RE = /<script(?![^>]*\bsrc=)[^>]*>/;
 
 async function resolvePage() {
 	return new Response("<html><head></head><body>page</body></html>");
@@ -85,8 +93,16 @@ describe("whereamiHandle", () => {
 
 		expect(html).toContain("<title>My App</title>");
 		expect(html).not.toContain('rel="icon"');
-		expect(html).not.toContain("clip-path:polygon");
 		expect(html).toContain('name="app-environment" content="prod"');
+		// The console banner still needs the script; the badge (no color) mustn't be in it.
+		const script = await (
+			await request(
+				whereamiHandle({ detect: () => "prod", packageJsonPath: basicPkgPath }),
+				SCRIPT_PATH,
+			)
+		).text();
+		expect(script).toContain("console.log(");
+		expect(script).not.toContain("clip-path:polygon");
 	});
 
 	it("tints an existing favicon source instead of generating a default one", async () => {
@@ -107,34 +123,40 @@ describe("whereamiHandle", () => {
 	});
 
 	it("disables the banner entirely when banner: false", async () => {
-		const html = await render(
-			whereamiHandle({ detect: () => "dev", banner: false, packageJsonPath: basicPkgPath }),
-		);
+		const handle = whereamiHandle({
+			detect: () => "dev",
+			banner: false,
+			packageJsonPath: basicPkgPath,
+		});
+		const html = await render(handle);
+		const script = await (await request(handle, SCRIPT_PATH)).text();
 
 		expect(html).not.toContain("app-name");
-		expect(html).not.toContain("console.log");
+		expect(script).not.toContain("console.log");
 	});
 
 	it("disables the badge via badge: false while keeping the console banner", async () => {
-		const html = await render(
-			whereamiHandle({ detect: () => "dev", badge: false, packageJsonPath: basicPkgPath }),
-		);
+		const handle = whereamiHandle({
+			detect: () => "dev",
+			badge: false,
+			packageJsonPath: basicPkgPath,
+		});
+		const script = await (await request(handle, SCRIPT_PATH)).text();
 
-		expect(html).not.toContain("clip-path:polygon");
-		expect(html).toContain("console.log(");
+		expect(script).not.toContain("clip-path:polygon");
+		expect(script).toContain("console.log(");
 	});
 
 	it("includes custom metadata in the badge and console banner", async () => {
-		const html = await render(
-			whereamiHandle({
-				detect: () => "dev",
-				metadata: { region: "eu-central" },
-				packageJsonPath: basicPkgPath,
-			}),
-		);
+		const handle = whereamiHandle({
+			detect: () => "dev",
+			metadata: { region: "eu-central" },
+			packageJsonPath: basicPkgPath,
+		});
+		const script = await (await request(handle, SCRIPT_PATH)).text();
 
-		expect(html).toContain('"region":"eu-central"');
-		expect(html).toContain('console.log({"region":"eu-central"});');
+		expect(script).toContain('"region":"eu-central"');
+		expect(script).toContain('console.log({"region":"eu-central"});');
 	});
 
 	it("passes through body chunks that don't contain </head> unchanged", async () => {
@@ -145,25 +167,77 @@ describe("whereamiHandle", () => {
 		expect(html).toContain("<h1>hello</h1>");
 	});
 
-	it("injects the title keeper script when a titlePrefix is set", async () => {
-		const html = await render(
-			whereamiHandle({
-				detect: () => "qa",
-				environments: { qa: { color: "#ff00ff", titlePrefix: "[QA] " } },
-				packageJsonPath: basicPkgPath,
-			}),
-		);
+	it("includes the title keeper in the served script when a titlePrefix is set", async () => {
+		const handle = whereamiHandle({
+			detect: () => "qa",
+			environments: { qa: { color: "#ff00ff", titlePrefix: "[QA] " } },
+			packageJsonPath: basicPkgPath,
+		});
+		const script = await (await request(handle, SCRIPT_PATH)).text();
 
-		expect(html).toContain("MutationObserver");
-		expect(html).toContain(JSON.stringify("[QA] "));
+		expect(script).toContain("MutationObserver");
+		expect(script).toContain(JSON.stringify("[QA] "));
 	});
 
-	it("doesn't inject the title keeper script when there's no titlePrefix", async () => {
-		const html = await render(
-			whereamiHandle({ detect: () => "prod", packageJsonPath: basicPkgPath }),
-		);
+	it("leaves the title keeper out of the served script when there's no titlePrefix", async () => {
+		const handle = whereamiHandle({ detect: () => "prod", packageJsonPath: basicPkgPath });
+		const script = await (await request(handle, SCRIPT_PATH)).text();
 
-		expect(html).not.toContain("MutationObserver");
+		expect(script).not.toContain("MutationObserver");
+	});
+
+	describe("CSP-safe external script", () => {
+		const options = {
+			detect: () => "qa",
+			environments: { qa: { color: "#ff00ff", titlePrefix: "[QA] " } },
+			pkg: { name: "app", version: "1.0.0" },
+		} satisfies WhereAmIOptions;
+
+		it("injects one deferred <script src> and no inline script", async () => {
+			const html = await render(whereamiHandle(options));
+
+			expect(html).toContain(SCRIPT_TAG);
+			expect(html.split("<script").length - 1).toBe(1);
+			expect(html).not.toMatch(INLINE_SCRIPT_RE);
+		});
+
+		it("serves the title keeper, console banner and badge as JavaScript with an ETag", async () => {
+			const response = await request(whereamiHandle(options), SCRIPT_PATH);
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+			expect(response.headers.get("cache-control")).toBe("no-cache, max-age=0, must-revalidate");
+			expect(response.headers.get("etag")).toMatch(/^"[0-9a-f]{8}"$/);
+			const js = await response.text();
+			expect(js).toContain("MutationObserver");
+			expect(js).toContain("console.log(");
+			expect(js).toContain("clip-path:polygon");
+		});
+
+		it("returns 304 when if-none-match matches the script's etag", async () => {
+			const handle = whereamiHandle(options);
+			const etag = (await request(handle, SCRIPT_PATH)).headers.get("etag") ?? "";
+
+			const second = await request(handle, SCRIPT_PATH, { "if-none-match": etag });
+			expect(second.status).toBe(304);
+			expect(await second.text()).toBe("");
+		});
+
+		it("injects no script and doesn't serve the path when nothing needs one", async () => {
+			const handle = whereamiHandle({
+				detect: () => "qa",
+				environments: { qa: { color: "#ff00ff" } },
+				banner: false,
+				badge: false,
+				pkg: { name: "app", version: "1.0.0" },
+			});
+			const html = await render(handle);
+			const response = await request(handle, SCRIPT_PATH);
+
+			expect(html).not.toContain("<script");
+			expect(response.headers.get("content-type")).not.toBe("text/javascript; charset=utf-8");
+			expect(await response.text()).toContain("page");
+		});
 	});
 
 	describe("favicon links inside Svelte's head-hydration block", () => {
