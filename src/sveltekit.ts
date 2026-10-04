@@ -1,4 +1,4 @@
-import type { Handle } from "@sveltejs/kit";
+import type { sequence } from "@sveltejs/kit/hooks";
 import { FALLBACK_COLOR, renderBadgeSvg } from "./badge-svg.js";
 import { defaultDetect } from "./detect.js";
 import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
@@ -28,8 +28,15 @@ import type {
 } from "./types.js";
 
 /**
+ * SvelteKit's `Handle`, from whichever major the app has installed. Kit 2 exports it from
+ * `@sveltejs/kit`, kit 3 only from `@sveltejs/kit/hooks` — but `sequence()` lives in
+ * `@sveltejs/kit/hooks` in both and returns exactly that type, so derive it from there.
+ */
+type Handle = ReturnType<typeof sequence>;
+
+/**
  * Where the handle serves its title-keeper/console-banner/badge code. A literal root path:
- * `kit.paths.base` isn't knowable from inside a hook, and SvelteKit 404s requests outside
+ * `paths.base` isn't knowable from inside a hook, and SvelteKit 404s requests outside
  * `base` before `handle` even runs — so apps with a `paths.base` can't load it yet.
  */
 const SCRIPT_PATH = "/_whereami/whereami.js";
@@ -121,10 +128,10 @@ function badgeValue(
  * The title keeper, console banner and corner badge are served the same way: as one external
  * file at `/_whereami/whereami.js`, loaded by a single `<script src defer>` in the `<head>`
  * instead of inline `<script>` tags. That keeps them working under a strict
- * Content-Security-Policy (`script-src 'self'`, or SvelteKit's nonce-based `kit.csp`) with no
+ * Content-Security-Policy (`script-src 'self'`, or SvelteKit's nonce-based `csp` config) with no
  * nonce and no `'unsafe-inline'`. Like the badge endpoint, that path is public and answered
  * before your other handlers run, so it exposes `metadata` to unauthenticated requests. Two
- * limitations: an app with `kit.paths.base` can't load it (SvelteKit 404s paths outside
+ * limitations: an app with `paths.base` can't load it (SvelteKit 404s paths outside
  * `base` before any hook runs), and a fully static/prerendered site has no server left to
  * answer it.
  */
@@ -140,7 +147,8 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	// `process` is not defined at all on workerd without the `nodejs_compat` flag (and is
 	// partial on other isolate runtimes), so reach for it defensively — an env-less runtime
 	// just falls through to the "dev" default, which is exactly what an unrecognized
-	// environment should look like. Pass `detect` to key off `platform.env` instead.
+	// environment should look like. Pass `detect` to key off something else instead — on
+	// Cloudflare, `env` from `cloudflare:workers` (SvelteKit 3 no longer has `platform.env`).
 	const proc = typeof process === "undefined" ? undefined : process;
 	const env = (proc?.env ?? {}) as Record<string, string>;
 	const root = proc?.cwd?.() ?? ".";

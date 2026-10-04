@@ -22,12 +22,12 @@ jobs:
 
       # The actual publish step below always runs the real `npm` CLI, not bun/pnpm —
       # npm's OIDC trusted publishing (no NPM_TOKEN needed) only works there, and
-      # only on npm >= 11.5.1. Node 22's bundled npm is older than that, which
+      # only on npm >= 11.5.1. The npm bundled with Node may be older than that, which
       # surfaces as a confusing 404 on publish (npm couldn't send/match the OIDC
       # token, not an actual "package not found"), so upgrade it explicitly.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
 

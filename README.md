@@ -289,13 +289,13 @@ compiled `<title>` sets `document.title` again once the page hydrates.
 banner and badge are served together as one external file at
 `/_whereami/whereami.js` (with an `ETag` and `cache-control: no-cache`), loaded
 by a single `<script src="/_whereami/whereami.js" defer>` in the `<head>` — so
-they work under `script-src 'self'` or SvelteKit's nonce-based `kit.csp`, with
+they work under `script-src 'self'` or SvelteKit's nonce-based `csp` config, with
 no nonce and no `'unsafe-inline'`. If none of the three is enabled, no script
 tag is injected and the path isn't served.
 
 Like the badge endpoint, that path is public and answered before your other
 handlers run, so whatever you pass as `metadata` is readable without logging
-in. Two limitations: apps with `kit.paths.base` can't load it yet (SvelteKit
+in. Two limitations: apps with `paths.base` can't load it yet (SvelteKit
 404s paths outside `base` before any hook runs), and a fully static or
 prerendered site has no server left to answer it.
 
