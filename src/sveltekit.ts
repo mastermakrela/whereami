@@ -80,6 +80,23 @@ function ifNoneMatchMatches(header: string | null, etag: string): boolean {
 }
 
 /**
+ * A 200 (or 304 on a matching `If-None-Match`) for content that is fixed for this handle's
+ * lifetime. `no-cache` because it must pick up a redeploy (new version/metadata) on the next
+ * load, never a stale copy; the `ETag` keeps the repeat request cheap.
+ */
+function cachedResponse(request: Request, body: string, type: string, etag: string): Response {
+	const headers = {
+		"content-type": `${type}; charset=utf-8`,
+		"cache-control": "no-cache, max-age=0, must-revalidate",
+		etag,
+	};
+	if (ifNoneMatchMatches(request.headers.get("if-none-match"), etag)) {
+		return new Response(null, { status: 304, headers });
+	}
+	return new Response(body, { headers });
+}
+
+/**
  * Only ever reads the fields named in `show` — never `metadata`, never `process.env`.
  * An unrecognized field name is dropped rather than silently rendering some other field.
  */
@@ -254,30 +271,12 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	return async ({ event, resolve }) => {
 		if (scriptEnabled && event.url.pathname === SCRIPT_PATH) {
 			const { js, etag } = await computeScript();
-			const headers = {
-				"content-type": "text/javascript; charset=utf-8",
-				// Must pick up a redeploy (new version/metadata) on the next page load.
-				"cache-control": "no-cache, max-age=0, must-revalidate",
-				etag,
-			};
-			if (ifNoneMatchMatches(event.request.headers.get("if-none-match"), etag)) {
-				return new Response(null, { status: 304, headers });
-			}
-			return new Response(js, { headers });
+			return cachedResponse(event.request, js, "text/javascript", etag);
 		}
 
 		if (badgeEndpoint && event.url.pathname === badgeEndpoint.path) {
 			const { svg, etag } = await computeBadge(badgeEndpoint);
-			const headers = {
-				"content-type": "image/svg+xml; charset=utf-8",
-				// The badge must always reflect the currently deployed version, never a stale one.
-				"cache-control": "no-cache, max-age=0, must-revalidate",
-				etag,
-			};
-			if (ifNoneMatchMatches(event.request.headers.get("if-none-match"), etag)) {
-				return new Response(null, { status: 304, headers });
-			}
-			return new Response(svg, { headers });
+			return cachedResponse(event.request, svg, "image/svg+xml", etag);
 		}
 
 		const pkg = await pkgPromise;
