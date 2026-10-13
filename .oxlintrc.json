@@ -6,7 +6,7 @@
 		"perf": "warn"
 	},
 	"rules": {
-		"no-underscore-dangle": ["warn", { "allow": ["__WHEREAMI_PKG__"] }]
+		"no-underscore-dangle": "warn"
 	},
 	"ignorePatterns": ["dist", "test/fixtures", "*.tsbuildinfo"]
 }
