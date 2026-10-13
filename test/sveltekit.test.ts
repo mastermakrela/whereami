@@ -122,6 +122,20 @@ describe("whereamiHandle", () => {
 		expect(svg).toContain('flood-color="#f59e0b"');
 	});
 
+	it("falls back to the generated letter icon instead of failing the page when favicon.path is missing", async () => {
+		const html = await render(
+			whereamiHandle({
+				detect: () => "dev",
+				favicon: { path: path.join(here, "fixtures/nope/favicon.svg") },
+				pkg: { name: "zeta", version: "1.0.0" },
+			}),
+		);
+
+		const dataUri = html.match(/href="(data:image\/svg\+xml;base64,[^"]+)"/)?.[1];
+		const svg = Buffer.from(dataUri?.split(",")[1] ?? "", "base64").toString("utf-8");
+		expect(svg).toContain(">Z</text>");
+	});
+
 	it("disables the banner entirely when banner: false", async () => {
 		const handle = whereamiHandle({
 			detect: () => "dev",

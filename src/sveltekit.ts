@@ -1,7 +1,12 @@
 import type { sequence } from "@sveltejs/kit/hooks";
 import { FALLBACK_COLOR, renderBadgeSvg } from "./badge-svg.js";
 import { defaultDetect } from "./detect.js";
-import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
+import {
+	type FaviconResult,
+	faviconDataUri,
+	findFaviconSource,
+	resolveFavicon,
+} from "./favicon.js";
 import {
 	applyTitlePrefix,
 	badgeScript,
@@ -226,9 +231,20 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 		if (!faviconPromise) {
 			faviconPromise = (async () => {
 				if (!faviconEnabled || !envConfig.color) return null;
-				const source = await findFaviconSource(root, options.favicon);
+				const color = envConfig.color as string;
 				const pkg = await pkgPromise;
-				const favicon = await resolveFavicon(source, envConfig.color as string, pkg.name);
+				// A bad favicon must not 500 every page: the build-time plugin can fail fast, a running
+				// server can't. Fall back to the generated letter icon, like the no-filesystem case.
+				let favicon: FaviconResult;
+				try {
+					const source = await findFaviconSource(root, options.favicon);
+					favicon = await resolveFavicon(source, color, pkg.name);
+				} catch (err) {
+					console.warn(
+						`[vite-plugin-whereami] ${(err as Error).message} — generating a default icon instead`,
+					);
+					favicon = await resolveFavicon(null, color, pkg.name);
+				}
 				return { href: faviconDataUri(favicon), ext: favicon.ext };
 			})();
 		}
