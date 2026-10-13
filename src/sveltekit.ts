@@ -1,7 +1,12 @@
 import type { sequence } from "@sveltejs/kit/hooks";
 import { FALLBACK_COLOR, renderBadgeSvg } from "./badge-svg.js";
 import { defaultDetect } from "./detect.js";
-import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
+import {
+	type FaviconResult,
+	faviconDataUri,
+	findFaviconSource,
+	resolveFavicon,
+} from "./favicon.js";
 import {
 	applyTitlePrefix,
 	badgeScript,
@@ -72,6 +77,23 @@ function ifNoneMatchMatches(header: string | null, etag: string): boolean {
 		const tag = candidate.trim();
 		return tag === "*" || tag.replace(/^W\//, "") === etag;
 	});
+}
+
+/**
+ * A 200 (or 304 on a matching `If-None-Match`) for content that is fixed for this handle's
+ * lifetime. `no-cache` because it must pick up a redeploy (new version/metadata) on the next
+ * load, never a stale copy; the `ETag` keeps the repeat request cheap.
+ */
+function cachedResponse(request: Request, body: string, type: string, etag: string): Response {
+	const headers = {
+		"content-type": `${type}; charset=utf-8`,
+		"cache-control": "no-cache, max-age=0, must-revalidate",
+		etag,
+	};
+	if (ifNoneMatchMatches(request.headers.get("if-none-match"), etag)) {
+		return new Response(null, { status: 304, headers });
+	}
+	return new Response(body, { headers });
 }
 
 /**
@@ -226,9 +248,20 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 		if (!faviconPromise) {
 			faviconPromise = (async () => {
 				if (!faviconEnabled || !envConfig.color) return null;
-				const source = await findFaviconSource(root, options.favicon);
+				const color = envConfig.color as string;
 				const pkg = await pkgPromise;
-				const favicon = await resolveFavicon(source, envConfig.color as string, pkg.name);
+				// A bad favicon must not 500 every page: the build-time plugin can fail fast, a running
+				// server can't. Fall back to the generated letter icon, like the no-filesystem case.
+				let favicon: FaviconResult;
+				try {
+					const source = await findFaviconSource(root, options.favicon);
+					favicon = await resolveFavicon(source, color, pkg.name);
+				} catch (err) {
+					console.warn(
+						`[vite-plugin-whereami] ${(err as Error).message} — generating a default icon instead`,
+					);
+					favicon = await resolveFavicon(null, color, pkg.name);
+				}
 				return { href: faviconDataUri(favicon), ext: favicon.ext };
 			})();
 		}
@@ -238,30 +271,12 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 	return async ({ event, resolve }) => {
 		if (scriptEnabled && event.url.pathname === SCRIPT_PATH) {
 			const { js, etag } = await computeScript();
-			const headers = {
-				"content-type": "text/javascript; charset=utf-8",
-				// Must pick up a redeploy (new version/metadata) on the next page load.
-				"cache-control": "no-cache, max-age=0, must-revalidate",
-				etag,
-			};
-			if (ifNoneMatchMatches(event.request.headers.get("if-none-match"), etag)) {
-				return new Response(null, { status: 304, headers });
-			}
-			return new Response(js, { headers });
+			return cachedResponse(event.request, js, "text/javascript", etag);
 		}
 
 		if (badgeEndpoint && event.url.pathname === badgeEndpoint.path) {
 			const { svg, etag } = await computeBadge(badgeEndpoint);
-			const headers = {
-				"content-type": "image/svg+xml; charset=utf-8",
-				// The badge must always reflect the currently deployed version, never a stale one.
-				"cache-control": "no-cache, max-age=0, must-revalidate",
-				etag,
-			};
-			if (ifNoneMatchMatches(event.request.headers.get("if-none-match"), etag)) {
-				return new Response(null, { status: 304, headers });
-			}
-			return new Response(svg, { headers });
+			return cachedResponse(event.request, svg, "image/svg+xml", etag);
 		}
 
 		const pkg = await pkgPromise;
