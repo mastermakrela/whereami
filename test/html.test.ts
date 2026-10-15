@@ -148,6 +148,7 @@ describe("consoleBannerTag", () => {
 		expect(tag.tag).toBe("script");
 		expect(tag.children).toContain("app@1.0.0");
 		expect(tag.children).toContain("#22c55e");
+		expect(tag.children).toContain("color:#111;color:contrast-color(#22c55e)");
 		expect(tag.children).not.toContain("console.log({");
 	});
 
@@ -171,6 +172,11 @@ describe("badgeTag", () => {
 			version: "1.0.0",
 			environment: "staging",
 		});
+	});
+
+	it("asks the browser for a readable text colour on the tinted header, with a fixed fallback first", () => {
+		const tag = badgeTag(pkg, "staging", "#f59e0b", {});
+		expect(tag.children).toContain('color:#111;color:contrast-color(" + color + ")');
 	});
 
 	it("lets the built-in fields win over a colliding metadata key", () => {
