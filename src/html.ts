@@ -200,7 +200,7 @@ export function consoleBannerScript(
   ${JSON.stringify(
 		"background:#111;color:#fff;padding:2px 0 2px 6px;border-radius:3px 0 0 3px;font-weight:600",
 	)},
-  ${JSON.stringify(`background:${color};color:#111;padding:2px 6px 2px 0;border-radius:0 3px 3px 0;font-weight:600`)}
+  ${JSON.stringify(`background:${color};color:#111;color:contrast-color(${color});padding:2px 6px 2px 0;border-radius:0 3px 3px 0;font-weight:600`)}
 );${hasMetadata ? `\nconsole.log(${jsonForScript(metadata)});` : ""}})();`;
 }
 
@@ -225,13 +225,13 @@ function mount(){
   panel.style.cssText = "position:fixed;bottom:44px;left:8px;display:none;background:#111;color:#f3f4f6;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.35);z-index:2147483647;overflow:hidden;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;";
 
   var header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px 6px 10px;background:" + color + ";color:#111;font-weight:700;";
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px 6px 10px;background:" + color + ";color:#111;color:contrast-color(" + color + ");font-weight:700;";
   header.textContent = info.name + "@" + info.version;
 
   var close = document.createElement("button");
   close.textContent = "\\u00d7";
   close.setAttribute("aria-label", "Close");
-  close.style.cssText = "appearance:none;border:0;background:transparent;color:#111;font-size:16px;line-height:1;cursor:pointer;padding:0 2px;";
+  close.style.cssText = "appearance:none;border:0;background:transparent;color:inherit;font-size:16px;line-height:1;cursor:pointer;padding:0 2px;";
   close.addEventListener("click", function(e){ e.stopPropagation(); setOpen(false); });
   header.appendChild(close);
 
