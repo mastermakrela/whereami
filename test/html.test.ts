@@ -184,4 +184,15 @@ describe("badgeTag", () => {
 		const info = JSON.parse((tag.children as string).match(/var info = (\{.*?\});/)?.[1] ?? "{}");
 		expect(info.name).toBe("app");
 	});
+
+	it("escapes < in metadata so a value containing </script> can't close the inline script", () => {
+		const metadata = { note: "</script><img src=x onerror=alert(1)>" };
+		for (const tag of [
+			consoleBannerTag(pkg, "dev", "#22c55e", metadata),
+			badgeTag(pkg, "dev", "#22c55e", metadata),
+		]) {
+			expect(tag.children).not.toContain("</script");
+			expect(tag.children).toContain("\\u003c/script>");
+		}
+	});
 });

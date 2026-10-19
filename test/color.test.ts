@@ -9,6 +9,7 @@ describe("color helpers", () => {
 
 	it("rejects invalid hex colors", () => {
 		expect(() => parseHexColor("not-a-color")).toThrow();
+		expect(() => parseHexColor("#22c55g")).toThrow();
 	});
 
 	it("round-trips rgb -> hsl -> rgb", () => {

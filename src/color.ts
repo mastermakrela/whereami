@@ -13,10 +13,11 @@ export function parseHexColor(hex: string): { r: number; g: number; b: number } 
 					.map((c) => c + c)
 					.join("")
 			: normalized;
-	const int = Number.parseInt(full, 16);
-	if (full.length !== 6 || Number.isNaN(int)) {
+	// `parseInt` alone stops at the first bad character ("22c55g" -> rgb(2, 44, 85)).
+	if (!/^[0-9a-f]{6}$/i.test(full)) {
 		throw new Error(`whereami: invalid hex color "${hex}"`);
 	}
+	const int = Number.parseInt(full, 16);
 	return {
 		r: (int >> 16) & 255,
 		g: (int >> 8) & 255,
