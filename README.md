@@ -275,11 +275,13 @@ The values are inlined into your `hooks.server.ts` — always part of the server
 bundle — so they need **no filesystem access at request time**, including on
 edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy). (The
 plugin can't hand them to `whereamiHandle()` directly: Vite leaves packages in
-`node_modules` out of the server bundle it processes.) Without the plugin,
-`build` is empty and the handle detects the environment at request time and
-reads `package.json` off disk — fine on Node; on an edge runtime it logs a
-one-time warning and labels the app `app@0.0.0`. You can also pass
-`environment` and `pkg` yourself.
+`node_modules` out of the server bundle it processes.) The import only
+resolves with the plugin installed. Without it, call `whereamiHandle()` without
+`build`: it detects the environment at request time and reads `package.json`
+off disk — fine on Node; on an edge runtime it logs a one-time warning and
+labels the app `app@0.0.0`. You can also pass `environment` and `pkg` yourself.
+Next to SvelteKit the plugin does nothing else, so SvelteKit doesn't warn about
+it.
 
 The handle itself is runtime-agnostic either way: it never statically imports a
 Node builtin (or `Buffer`, or `process`), so a Cloudflare Workers deploy needs

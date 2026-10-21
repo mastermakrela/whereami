@@ -103,26 +103,36 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 		return faviconPromise;
 	}
 
-	return {
+	const plugin: Plugin = {
 		name: "vite-plugin-whereami",
 
 		// Read package.json here so the letter favicon, console banner, and badge can label
 		// themselves with the app's name/version — `config.root` is already resolved to an
-		// absolute path by this point. (Under SvelteKit only `vite-plugin-whereami/build` below
-		// is used — the HTML injection happens in `whereamiHandle()` instead.)
-		async configResolved(config: ResolvedConfig) {
-			root = config.root;
-			base = config.base;
-			command = config.command;
-			pkg = options.pkg ?? (await readPkgInfo(root, options.packageJsonPath));
-			env = loadEnv(config.mode, root, "");
-			envKey = detect({ mode: config.mode, command, env });
-			envConfig = environments[envKey] ?? {};
+		// absolute path by this point.
+		configResolved: {
+			// Before SvelteKit's own `configResolved`, which warns about any `transformIndexHtml`.
+			order: "pre",
+			async handler(config: ResolvedConfig) {
+				// SvelteKit never serves index.html: `whereamiHandle()` does the injection there, and
+				// this plugin only answers `vite-plugin-whereami/build`.
+				if (config.plugins.some((p) => p.name.startsWith("vite-plugin-sveltekit"))) {
+					delete plugin.transformIndexHtml;
+					delete plugin.buildStart;
+					delete plugin.configureServer;
+				}
+				root = config.root;
+				base = config.base;
+				command = config.command;
+				pkg = options.pkg ?? (await readPkgInfo(root, options.packageJsonPath));
+				env = loadEnv(config.mode, root, "");
+				envKey = detect({ mode: config.mode, command, env });
+				envConfig = environments[envKey] ?? {};
+			},
 		},
 
 		// Code in node_modules is SSR-externalized, so `whereamiHandle()` itself can never see
 		// build-time values; the app's own `hooks.server.ts` imports them from here instead.
-		// `pre`, or Vite's resolver would answer with the package's no-plugin fallback first.
+		// `./build` is a types-only export, so there's no file for Vite to externalize first.
 		resolveId: {
 			order: "pre",
 			handler(id) {
@@ -210,4 +220,5 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 			return { html: out, tags };
 		},
 	};
+	return plugin;
 }
