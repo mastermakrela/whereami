@@ -1,8 +1,6 @@
 import { loadNodeIO } from "./node-io.js";
 import type { PkgInfo } from "./types.js";
 
-export type { PkgInfo };
-
 const FALLBACK: PkgInfo = { name: "app", version: "0.0.0" };
 
 export async function readPkgInfo(root: string, pkgPath?: string): Promise<PkgInfo> {

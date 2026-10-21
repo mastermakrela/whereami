@@ -1,6 +1,6 @@
 import type { sequence } from "@sveltejs/kit/hooks";
 import { FALLBACK_COLOR, renderBadgeSvg } from "./badge-svg.js";
-import { defaultDetect } from "./detect.js";
+import { resolveDetect } from "./detect.js";
 import { faviconDataUri, findFaviconSource, resolveFavicon } from "./favicon.js";
 import {
 	applyTitlePrefix,
@@ -19,10 +19,11 @@ import {
 	resolveBadgeEndpoint,
 	resolveBanner,
 } from "./options.js";
-import { type PkgInfo, readPkgInfo } from "./pkg.js";
+import { readPkgInfo } from "./pkg.js";
 import type {
 	DetectContext,
 	EnvironmentConfig,
+	PkgInfo,
 	ResolvedBadgeEndpointOptions,
 	WhereAmIOptions,
 } from "./types.js";
@@ -137,11 +138,9 @@ function badgeValue(
  * answer it.
  */
 export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
-	const detect = options.detect ?? defaultDetect;
 	const environments = { ...DEFAULT_ENVIRONMENTS, ...options.environments };
 	const banner = resolveBanner(options.banner);
 	const badge = resolveBadge(options.badge);
-	const badgeEndpoint = resolveBadgeEndpoint(options.badgeEndpoint);
 	const metadata = options.metadata ?? {};
 	const faviconEnabled = options.favicon?.enabled ?? true;
 
@@ -164,7 +163,8 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 		command: "serve",
 		env,
 	};
-	const envKey = options.environment ? env.WHEREAMI_ENV || options.environment : detect(ctx);
+	const envKey = resolveDetect(options)(ctx);
+	const badgeEndpoint = resolveBadgeEndpoint(options.badgeEndpoint, envKey);
 	const envConfig: EnvironmentConfig = environments[envKey] ?? {};
 
 	const pkgPromise: Promise<PkgInfo> = options.pkg
@@ -213,7 +213,7 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 			badgePromise = (async () => {
 				const pkg = await pkgPromise;
 				const svg = renderBadgeSvg({
-					label: endpoint.label ?? envKey,
+					label: endpoint.label,
 					value: badgeValue(pkg, envKey, endpoint.show),
 					color: endpoint.color ?? envConfig.color ?? FALLBACK_COLOR,
 				});

@@ -1,5 +1,5 @@
 import { PLATFORM_DETECTORS } from "./platforms.js";
-import type { DetectContext } from "./types.js";
+import type { DetectContext, WhereAmIOptions } from "./types.js";
 
 /**
  * Default environment detection.
@@ -26,4 +26,15 @@ export function defaultDetect(ctx: DetectContext): string {
 	if (ctx.mode === "production") return "prod";
 	if (ctx.mode === "staging") return "staging";
 	return "dev";
+}
+
+/**
+ * The detector both entry points use: the user's `detect` if given, else `environment` (the
+ * key resolved at build time) unless `WHEREAMI_ENV` overrides it, else the default heuristics.
+ */
+export function resolveDetect(options: WhereAmIOptions): (ctx: DetectContext) => string {
+	if (options.detect) return options.detect;
+	const { environment } = options;
+	if (!environment) return defaultDetect;
+	return (ctx) => ctx.env.WHEREAMI_ENV || environment;
 }

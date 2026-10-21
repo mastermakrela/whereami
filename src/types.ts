@@ -79,9 +79,9 @@ export interface WhereAmIOptions {
 	 */
 	detect?: (ctx: DetectContext) => string;
 	/**
-	 * Use this environment key instead of calling `detect` — typically the one the `whereami()`
-	 * Vite plugin resolved at build time (see `vite-plugin-whereami/build`). In
-	 * `whereamiHandle()`, a `WHEREAMI_ENV` env var present at request time still overrides it.
+	 * Use this environment key instead of the default detection — typically the one the
+	 * `whereami()` Vite plugin resolved at build time (see `vite-plugin-whereami/build`). A
+	 * `WHEREAMI_ENV` env var still overrides it, and a custom `detect` replaces both.
 	 */
 	environment?: string;
 	/**
@@ -145,7 +145,7 @@ export interface ResolvedBadgeOptions {
 
 export interface ResolvedBadgeEndpointOptions {
 	path: string;
-	label?: string;
+	label: string;
 	show: Array<"name" | "version" | "environment">;
 	color?: string;
 }

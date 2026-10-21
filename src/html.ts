@@ -1,6 +1,6 @@
 import type { HtmlTagDescriptor } from "vite";
 import { ICON_LINK_RE, faviconMimeType } from "./favicon.js";
-import type { PkgInfo } from "./pkg.js";
+import type { PkgInfo } from "./types.js";
 import type { ResolvedBannerOptions } from "./types.js";
 
 const TITLE_RE = /(<title[^>]*>)([\s\S]*?)(<\/title>)/i;

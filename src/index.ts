@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import type { Plugin, ResolvedConfig } from "vite";
 import { loadEnv } from "vite";
-import { defaultDetect } from "./detect.js";
+import { resolveDetect } from "./detect.js";
 import {
 	type FaviconResult,
 	faviconMimeType,
@@ -18,8 +18,8 @@ import {
 	titleKeeperTag,
 } from "./html.js";
 import { DEFAULT_ENVIRONMENTS, resolveBanner, resolveBadge } from "./options.js";
-import { type PkgInfo, readPkgInfo } from "./pkg.js";
-import type { EnvironmentConfig, WhereAmIBuild, WhereAmIOptions } from "./types.js";
+import { readPkgInfo } from "./pkg.js";
+import type { EnvironmentConfig, PkgInfo, WhereAmIBuild, WhereAmIOptions } from "./types.js";
 
 export type {
 	WhereAmIOptions,
@@ -63,7 +63,7 @@ function joinUrl(base: string, fileName: string): string {
 }
 
 export default function whereami(options: WhereAmIOptions = {}): Plugin {
-	const detect = options.detect ?? defaultDetect;
+	const detect = resolveDetect(options);
 	const environments = { ...DEFAULT_ENVIRONMENTS, ...options.environments };
 	const banner = resolveBanner(options.banner);
 	const badge = resolveBadge(options.badge);
@@ -79,6 +79,7 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 	let pkg: PkgInfo;
 	let faviconPromise: Promise<FaviconResult | null> | null = null;
 	let faviconSourcePath: string | null = null;
+	let buildModule: string | undefined;
 
 	function invalidateFavicon(): void {
 		faviconPromise = null;
@@ -115,7 +116,7 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 			command = config.command;
 			pkg = options.pkg ?? (await readPkgInfo(root, options.packageJsonPath));
 			env = loadEnv(config.mode, root, "");
-			envKey = options.environment ?? detect({ mode: config.mode, command, env });
+			envKey = detect({ mode: config.mode, command, env });
 			envConfig = environments[envKey] ?? {};
 		},
 
@@ -131,16 +132,18 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 
 		load(id) {
 			if (id !== RESOLVED_BUILD_MODULE) return;
-			const commit = options.pkg ? undefined : buildCommit(root, env);
-			const build: WhereAmIBuild = {
-				environment: envKey,
-				// Build metadata rather than a bare SHA, which the banner and badge would render as `vabc1234`.
-				pkg:
-					commit && !pkg.version.includes("+")
-						? { ...pkg, version: `${pkg.version}+${commit}` }
-						: pkg,
-			};
-			return `export default ${JSON.stringify(build)};`;
+			// Once per run: every Vite environment (client, SSR) loads it, and git is a subprocess.
+			buildModule ??= (() => {
+				const commit =
+					options.pkg || pkg.version.includes("+") ? undefined : buildCommit(root, env);
+				const build: WhereAmIBuild = {
+					environment: envKey,
+					// Build metadata rather than a bare SHA, which the banner and badge would render as `vabc1234`.
+					pkg: commit ? { ...pkg, version: `${pkg.version}+${commit}` } : pkg,
+				};
+				return `export default ${JSON.stringify(build)};`;
+			})();
+			return buildModule;
 		},
 
 		async buildStart() {

@@ -332,7 +332,7 @@ interface WhereAmIOptions {
 		command: "build" | "serve";
 		env: Record<string, string>;
 	}) => string;
-	environment?: string; // skips detect; in whereamiHandle(), a request-time WHEREAMI_ENV still wins
+	environment?: string; // replaces the default detection; WHEREAMI_ENV still wins, a custom detect replaces it
 	environments?: Record<string, { color?: string; titlePrefix?: string }>;
 	favicon?: { enabled?: boolean; path?: string };
 	banner?: boolean | { enabled?: boolean; meta?: boolean; console?: boolean; metaPrefix?: string };

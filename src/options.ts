@@ -30,6 +30,7 @@ export function resolveBadge(badge: WhereAmIOptions["badge"]): ResolvedBadgeOpti
 
 export function resolveBadgeEndpoint(
 	options: WhereAmIOptions["badgeEndpoint"],
+	envKey: string,
 ): ResolvedBadgeEndpointOptions | null {
 	// An empty/blank `path` (an unset env var threaded into the config, say) would normalize to
 	// "/" and make the badge swallow the site root — treat it as "not configured" instead.
@@ -40,7 +41,7 @@ export function resolveBadgeEndpoint(
 	const path = raw.startsWith("/") ? raw : `/${raw}`;
 	return {
 		path,
-		label: opts.label,
+		label: opts.label ?? envKey,
 		show: opts.show ?? ["version"],
 		color: opts.color,
 	};
