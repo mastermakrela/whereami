@@ -1,9 +1,7 @@
 import { loadNodeIO } from "./node-io.js";
+import type { PkgInfo } from "./types.js";
 
-export interface PkgInfo {
-	name: string;
-	version: string;
-}
+export type { PkgInfo };
 
 const FALLBACK: PkgInfo = { name: "app", version: "0.0.0" };
 
@@ -12,7 +10,7 @@ export async function readPkgInfo(root: string, pkgPath?: string): Promise<PkgIn
 	const io = await loadNodeIO();
 	if (!io) {
 		console.warn(
-			`[vite-plugin-whereami] no filesystem at request time (edge/isolate runtime), so package.json can't be read — pass \`pkg: { name, version }\` imported from your package.json instead; falling back to "app@0.0.0"`,
+			`[vite-plugin-whereami] no filesystem at request time (edge/isolate runtime), so package.json can't be read — add the whereami() Vite plugin and pass \`...build\` from "vite-plugin-whereami/build" instead; falling back to "app@0.0.0"`,
 		);
 		return FALLBACK;
 	}

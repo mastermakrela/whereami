@@ -28,11 +28,11 @@ in this project:
 1. Add it as a dev dependency with this project's package manager.
 2. Wire it up for this project's framework:
    - Plain Vite: add `whereami()` to the `plugins` array in vite.config.ts/js.
-   - SvelteKit: DON'T add the Vite plugin (it's a no-op there). Instead add
-     `whereamiHandle()` to `src/hooks.server.ts`, and pass the app's name/version
-     imported from package.json so it works on edge runtimes:
-     `import { name, version } from "../package.json";`
-     `export const handle = whereamiHandle({ pkg: { name, version } });`
+   - SvelteKit: add `whereami()` to the `plugins` array in vite.config.ts (after
+     `sveltekit()`), and add `whereamiHandle()` to `src/hooks.server.ts`, fed with
+     what the plugin resolved at build time so it works on edge runtimes:
+     `import build from "vite-plugin-whereami/build";`
+     `export const handle = whereamiHandle({ ...build });`
      (use `sequence()` from `@sveltejs/kit/hooks` if there are other handlers).
      See https://github.com/mastermakrela/whereami#sveltekit.
 3. Check how/where this project deploys (vercel.json, .vercel/, wrangler.toml or
@@ -182,13 +182,14 @@ image in sync:
 
 ```ts
 whereamiHandle({
-	pkg: { name, version },
-	badgeEndpoint: {
-		path: "/_whereami/badge.svg", // required — setting this enables the feature
-		label: "deployed", // default
-		show: ["version"], // default; also: "name", "environment"
-		color: "#0b7285", // default: the environment's color, else this teal
-	},
+	...build,
+	badgeEndpoint: true, // or, with the defaults spelled out:
+	// badgeEndpoint: {
+	// 	path: "/_whereami/badge.svg",
+	// 	label: "staging", // default: the environment key
+	// 	show: ["version"], // also: "name", "environment"
+	// 	color: "#0b7285", // default: the environment's color, else this teal
+	// },
 });
 ```
 
@@ -232,30 +233,53 @@ at build/dev-server-start time, not read at request time.
 ## SvelteKit
 
 SvelteKit renders pages through its own SSR pipeline and never calls Vite's
-`transformIndexHtml` hook, so the regular `whereami()` plugin is a no-op there —
-you don't need it in `vite.config.ts`. Use the `vite-plugin-whereami/sveltekit`
-entry point instead, which does the same favicon/title/banner/badge injection
-through SvelteKit's own `transformPageChunk`, wired into `hooks.server.ts`:
+`transformIndexHtml` hook, so the injection happens in the
+`vite-plugin-whereami/sveltekit` entry point instead, through SvelteKit's own
+`transformPageChunk` in `hooks.server.ts`. The `whereami()` Vite plugin still
+belongs in `vite.config.ts`: it resolves what is only knowable while building
+and hands it over through `vite-plugin-whereami/build`:
 
 ```ts
+// vite.config.ts
+plugins: [sveltekit(), whereami()];
+
 // src/hooks.server.ts
 import { sequence } from "@sveltejs/kit/hooks";
-import { name, version } from "../package.json";
+import build from "vite-plugin-whereami/build";
 import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
 
-export const handle = sequence(
-	whereamiHandle({ pkg: { name, version } }) /* ...your other handlers */,
-);
+export const handle = sequence(whereamiHandle({ ...build }) /* ...your other handlers */);
 ```
 
-Importing `name`/`version` from `package.json` and passing them as `pkg` is what
-lets `whereamiHandle()` label the banner/badge with **no filesystem access at
-request time**, including on edge/isolate runtimes (Cloudflare Workers, Vercel
-Edge, Deno Deploy) that don't have one: the import is inlined into your
-`hooks.server.ts` — always part of the server bundle — at build time. Omit
-`pkg` and it falls back to reading `package.json` off disk at request time
-instead — fine on Node-based deployments; on an edge runtime it logs a one-time
-warning and labels the app `app@0.0.0`.
+`build` holds:
+
+- `environment` — what `detect` returned **at build time**, where the CI's env
+  vars are (`CF_PAGES_BRANCH`, `VERCEL_ENV`, your own deploy-target variable)
+  and `vite build` means production. A deployed Worker has none of them at
+  request time, and a compiled binary often has no `NODE_ENV`. A `WHEREAMI_ENV`
+  set at request time still overrides it, so one artifact deployed to several
+  environments can name each one. Your own deploy-target variable goes in the
+  plugin's `detect`:
+
+  ```ts
+  whereami({
+  	detect: ({ env }) => ({ production: "prod", development: "staging" })[env.DEPLOY_ENV] ?? "dev",
+  });
+  ```
+
+- `pkg` — `package.json`'s name and version, with the commit
+  (`CI_COMMIT_SHORT_SHA`, else `git rev-parse --short HEAD`) as semver build
+  metadata: `1.4.0+abc1234`.
+
+The values are inlined into your `hooks.server.ts` — always part of the server
+bundle — so they need **no filesystem access at request time**, including on
+edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy). (The
+plugin can't hand them to `whereamiHandle()` directly: Vite leaves packages in
+`node_modules` out of the server bundle it processes.) Without the plugin,
+`build` is empty and the handle detects the environment at request time and
+reads `package.json` off disk — fine on Node; on an edge runtime it logs a
+one-time warning and labels the app `app@0.0.0`. You can also pass
+`environment` and `pkg` yourself.
 
 The handle itself is runtime-agnostic either way: it never statically imports a
 Node builtin (or `Buffer`, or `process`), so a Cloudflare Workers deploy needs
@@ -308,6 +332,7 @@ interface WhereAmIOptions {
 		command: "build" | "serve";
 		env: Record<string, string>;
 	}) => string;
+	environment?: string; // skips detect; in whereamiHandle(), a request-time WHEREAMI_ENV still wins
 	environments?: Record<string, { color?: string; titlePrefix?: string }>;
 	favicon?: { enabled?: boolean; path?: string };
 	banner?: boolean | { enabled?: boolean; meta?: boolean; console?: boolean; metaPrefix?: string };
@@ -315,12 +340,14 @@ interface WhereAmIOptions {
 	metadata?: Record<string, unknown>; // must be JSON-serializable
 	packageJsonPath?: string; // default: "package.json"
 	pkg?: { name: string; version: string }; // bypasses packageJsonPath/fs when set
-	badgeEndpoint?: {
-		path: string; // e.g. "/_whereami/badge.svg" — required, enables the feature
-		label?: string; // default: "deployed"
-		show?: Array<"name" | "version" | "environment">; // default: ["version"]
-		color?: string; // default: the environment's color, else "#0b7285"
-	}; // SvelteKit only, see "Served SVG badge" above
+	badgeEndpoint?:
+		| true // all defaults
+		| {
+				path?: string; // default: "/_whereami/badge.svg"
+				label?: string; // default: the environment key
+				show?: Array<"name" | "version" | "environment">; // default: ["version"]
+				color?: string; // default: the environment's color, else "#0b7285"
+		  }; // SvelteKit only, see "Served SVG badge" above
 }
 ```
 

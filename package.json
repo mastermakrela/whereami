@@ -39,6 +39,11 @@
 			"types": "./dist/sveltekit.d.ts",
 			"import": "./dist/sveltekit.js",
 			"require": "./dist/sveltekit.cjs"
+		},
+		"./build": {
+			"types": "./dist/build.d.ts",
+			"import": "./dist/build.js",
+			"require": "./dist/build.cjs"
 		}
 	},
 	"scripts": {

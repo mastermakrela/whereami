@@ -34,13 +34,14 @@ export function resolveBadgeEndpoint(
 	// An empty/blank `path` (an unset env var threaded into the config, say) would normalize to
 	// "/" and make the badge swallow the site root — treat it as "not configured" instead.
 	if (!options) return null;
-	const raw = options.path.trim();
+	const opts = options === true ? {} : options;
+	const raw = (opts.path ?? "/_whereami/badge.svg").trim();
 	if (!raw || raw === "/") return null;
 	const path = raw.startsWith("/") ? raw : `/${raw}`;
 	return {
 		path,
-		label: options.label ?? "deployed",
-		show: options.show ?? ["version"],
-		color: options.color,
+		label: opts.label,
+		show: opts.show ?? ["version"],
+		color: opts.color,
 	};
 }

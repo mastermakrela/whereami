@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import type { Plugin, ResolvedConfig } from "vite";
 import { loadEnv } from "vite";
 import { defaultDetect } from "./detect.js";
@@ -18,7 +19,7 @@ import {
 } from "./html.js";
 import { DEFAULT_ENVIRONMENTS, resolveBanner, resolveBadge } from "./options.js";
 import { type PkgInfo, readPkgInfo } from "./pkg.js";
-import type { EnvironmentConfig, WhereAmIOptions } from "./types.js";
+import type { EnvironmentConfig, WhereAmIBuild, WhereAmIOptions } from "./types.js";
 
 export type {
 	WhereAmIOptions,
@@ -28,12 +29,33 @@ export type {
 	BannerOptions,
 	BadgeOptions,
 	BadgeEndpointOptions,
+	WhereAmIBuild,
 } from "./types.js";
 
 const FAVICON_BASENAME = "__whereami-favicon";
+const BUILD_MODULE = "vite-plugin-whereami/build";
+const RESOLVED_BUILD_MODULE = `\0${BUILD_MODULE}`;
 
 function faviconFileNameFor(ext: "svg" | "png"): string {
 	return `${FAVICON_BASENAME}.${ext}`;
+}
+
+/**
+ * The deploy artifact carries no `.git`, so the commit has to be read while building.
+ * shortcut: only GitLab's CI variable and a local `git` checkout, add other CIs' vars when one lacks `.git`.
+ */
+function buildCommit(root: string, env: Record<string, string>): string | undefined {
+	if (env.CI_COMMIT_SHORT_SHA) return env.CI_COMMIT_SHORT_SHA;
+	try {
+		const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+			cwd: root,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return sha || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function joinUrl(base: string, fileName: string): string {
@@ -51,6 +73,7 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 	let root: string;
 	let base: string;
 	let command: "build" | "serve";
+	let env: Record<string, string>;
 	let envKey: string;
 	let envConfig: EnvironmentConfig;
 	let pkg: PkgInfo;
@@ -84,17 +107,40 @@ export default function whereami(options: WhereAmIOptions = {}): Plugin {
 
 		// Read package.json here so the letter favicon, console banner, and badge can label
 		// themselves with the app's name/version — `config.root` is already resolved to an
-		// absolute path by this point. (Under SvelteKit this plugin is a no-op — the HTML
-		// injection happens in `whereamiHandle()` instead; see the
-		// `vite-plugin-whereami/sveltekit` entry point.)
+		// absolute path by this point. (Under SvelteKit only `vite-plugin-whereami/build` below
+		// is used — the HTML injection happens in `whereamiHandle()` instead.)
 		async configResolved(config: ResolvedConfig) {
 			root = config.root;
 			base = config.base;
 			command = config.command;
 			pkg = options.pkg ?? (await readPkgInfo(root, options.packageJsonPath));
-			const env = loadEnv(config.mode, root, "");
-			envKey = detect({ mode: config.mode, command, env });
+			env = loadEnv(config.mode, root, "");
+			envKey = options.environment ?? detect({ mode: config.mode, command, env });
 			envConfig = environments[envKey] ?? {};
+		},
+
+		// Code in node_modules is SSR-externalized, so `whereamiHandle()` itself can never see
+		// build-time values; the app's own `hooks.server.ts` imports them from here instead.
+		// `pre`, or Vite's resolver would answer with the package's no-plugin fallback first.
+		resolveId: {
+			order: "pre",
+			handler(id) {
+				return id === BUILD_MODULE ? RESOLVED_BUILD_MODULE : undefined;
+			},
+		},
+
+		load(id) {
+			if (id !== RESOLVED_BUILD_MODULE) return;
+			const commit = options.pkg ? undefined : buildCommit(root, env);
+			const build: WhereAmIBuild = {
+				environment: envKey,
+				// Build metadata rather than a bare SHA, which the banner and badge would render as `vabc1234`.
+				pkg:
+					commit && !pkg.version.includes("+")
+						? { ...pkg, version: `${pkg.version}+${commit}` }
+						: pkg,
+			};
+			return `export default ${JSON.stringify(build)};`;
 		},
 
 		async buildStart() {

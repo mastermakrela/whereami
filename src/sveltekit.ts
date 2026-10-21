@@ -96,25 +96,26 @@ function badgeValue(
 
 /**
  * SvelteKit never runs pages through Vite's `transformIndexHtml` (its own Vite plugin forces
- * `appType: "custom"`, which is what disables that hook), so the regular `whereami()` plugin
- * is a no-op there and isn't needed. This does the same favicon/title/banner/badge injection
- * through SvelteKit's own `transformPageChunk` instead — add it to `hooks.server.ts`:
+ * `appType: "custom"`, which is what disables that hook), so this does the same
+ * favicon/title/banner/badge injection through SvelteKit's own `transformPageChunk` instead —
+ * add it to `hooks.server.ts`, fed with what the `whereami()` Vite plugin resolved at build time:
  *
  * ```ts
  * import { sequence } from "@sveltejs/kit/hooks";
- * import { name, version } from "../package.json";
+ * import build from "vite-plugin-whereami/build";
  * import { whereamiHandle } from "vite-plugin-whereami/sveltekit";
  *
- * export const handle = sequence(whereamiHandle({ pkg: { name, version } }), ...yourHandlers);
+ * export const handle = sequence(whereamiHandle({ ...build }), ...yourHandlers);
  * ```
  *
- * The `pkg` import is the reliable way to label the banner/badge on edge/isolate runtimes
- * (Cloudflare Workers, Vercel Edge, Deno Deploy) that have no filesystem at request time:
- * importing `package.json` inlines those strings into your (always-bundled) `hooks.server.ts`
- * at build time. Omit `pkg` and it falls back to reading `package.json` off disk at request
- * time — fine on Node-based deployments, but silently `app@0.0.0` on edge runtimes. A custom
- * `favicon.path` is likewise unreachable without a filesystem; the generated letter icon is
- * used instead, correctly once the name is resolved.
+ * `build` carries the environment `detect` returned while building (where the CI's env vars
+ * are) and `package.json`'s name/version plus the commit, inlined into the app's
+ * always-bundled `hooks.server.ts`. This package itself stays outside the server bundle Vite
+ * processes, so the plugin can't hand them over any other way. Without them the handle
+ * detects the environment at request time and reads `package.json` off disk — fine on Node,
+ * but silently `app@0.0.0` on edge/isolate runtimes (Cloudflare Workers, Vercel Edge, Deno
+ * Deploy) with no filesystem. A custom `favicon.path` is likewise unreachable there; the
+ * generated letter icon is used instead.
  *
  * Setting `badgeEndpoint` additionally serves an SVG status badge at a fixed path (e.g.
  * `/_whereami/badge.svg`) — point a GitLab/GitHub repository badge at it to show the *live*
@@ -163,7 +164,7 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 		command: "serve",
 		env,
 	};
-	const envKey = detect(ctx);
+	const envKey = options.environment ? env.WHEREAMI_ENV || options.environment : detect(ctx);
 	const envConfig: EnvironmentConfig = environments[envKey] ?? {};
 
 	const pkgPromise: Promise<PkgInfo> = options.pkg
@@ -212,7 +213,7 @@ export function whereamiHandle(options: WhereAmIOptions = {}): Handle {
 			badgePromise = (async () => {
 				const pkg = await pkgPromise;
 				const svg = renderBadgeSvg({
-					label: endpoint.label,
+					label: endpoint.label ?? envKey,
 					value: badgeValue(pkg, envKey, endpoint.show),
 					color: endpoint.color ?? envConfig.color ?? FALLBACK_COLOR,
 				});

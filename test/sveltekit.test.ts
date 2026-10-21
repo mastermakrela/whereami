@@ -67,7 +67,9 @@ const originalWhereamiEnv = process.env.WHEREAMI_ENV;
 
 afterEach(() => {
 	process.env.NODE_ENV = originalNodeEnv;
-	process.env.WHEREAMI_ENV = originalWhereamiEnv;
+	// Assigning `undefined` to process.env stores the string "undefined".
+	if (originalWhereamiEnv === undefined) delete process.env.WHEREAMI_ENV;
+	else process.env.WHEREAMI_ENV = originalWhereamiEnv;
 });
 
 describe("whereamiHandle", () => {
@@ -371,7 +373,7 @@ describe("whereamiHandle", () => {
 				whereamiHandle({
 					detect: () => "staging",
 					pkg: { name: "my-app", version: "1.0.0" },
-					badgeEndpoint: { path: "/badge.svg" },
+					badgeEndpoint: { path: "/badge.svg", label: "deployed" },
 				}),
 				"/badge.svg",
 			);
@@ -505,6 +507,43 @@ describe("whereamiHandle", () => {
 
 			expect(await withOverride.text()).toContain("#ff00ff");
 			expect(await withoutOverride.text()).toContain("#f59e0b");
+		});
+
+		it("serves at /_whereami/badge.svg labelled with the environment for badgeEndpoint: true", async () => {
+			const response = await request(
+				whereamiHandle({
+					environment: "staging",
+					pkg: { name: "app", version: "1.0.0" },
+					badgeEndpoint: true,
+				}),
+				"/_whereami/badge.svg",
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toContain('aria-label="staging: v1.0.0"');
+		});
+	});
+
+	describe("environment", () => {
+		it("uses the given environment instead of calling detect", async () => {
+			process.env.NODE_ENV = "production";
+			delete process.env.WHEREAMI_ENV;
+
+			const html = await render(
+				whereamiHandle({ environment: "staging", pkg: { name: "app", version: "1.0.0" } }),
+			);
+
+			expect(html).toContain('name="app-environment" content="staging"');
+		});
+
+		it("still lets a request-time WHEREAMI_ENV override it", async () => {
+			process.env.WHEREAMI_ENV = "qas";
+
+			const html = await render(
+				whereamiHandle({ environment: "prod", pkg: { name: "app", version: "1.0.0" } }),
+			);
+
+			expect(html).toContain('name="app-environment" content="qas"');
 		});
 	});
 });
