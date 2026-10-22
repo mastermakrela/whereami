@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ViteDevServer, build, createServer } from "vite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import whereami from "../src/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -202,5 +202,86 @@ describe("dev server", () => {
 		expect(faviconRes.status).toBe(200);
 		expect(faviconRes.headers.get("content-type")).toContain("image/svg+xml");
 		expect(await faviconRes.text()).toContain("<svg");
+	});
+});
+
+/** An SSR build, like SvelteKit's server build, where a node_modules import is externalized. */
+async function ssrBuild(plugin = whereami()) {
+	const output = await build({
+		root: basicRoot,
+		configFile: false,
+		logLevel: "silent",
+		mode: "production",
+		build: { ssr: "build-info.js", write: false },
+		plugins: [plugin],
+	});
+	const result = Array.isArray(output) ? output[0] : output;
+	if (!("output" in result)) throw new Error("expected a one-off build, not a watcher");
+	return result.output[0].code;
+}
+
+describe("vite-plugin-whereami/build", () => {
+	// Installed like in a real app: the dev server externalizes whatever node_modules resolves.
+	const installed = path.join(basicRoot, "node_modules/vite-plugin-whereami");
+	beforeAll(async () => {
+		await mkdir(path.dirname(installed), { recursive: true });
+		await rm(installed, { force: true });
+		await symlink(path.join(here, ".."), installed);
+	});
+	afterAll(() => rm(installed, { force: true }));
+
+	afterEach(() => {
+		delete process.env.CI_COMMIT_SHORT_SHA;
+	});
+
+	it("bakes the build-time environment and the version plus commit into the SSR bundle", async () => {
+		process.env.CI_COMMIT_SHORT_SHA = "abc1234";
+
+		const code = await ssrBuild(whereami({ detect: ({ env }) => env.DEPLOY_TARGET ?? "staging" }));
+
+		expect(code).toContain('"environment": "staging"');
+		expect(code).toContain('"version": "1.2.3+abc1234"');
+		expect(code).not.toMatch(/from "vite-plugin-whereami\/build"/);
+	});
+
+	it("keeps an explicit pkg exactly as given", async () => {
+		process.env.CI_COMMIT_SHORT_SHA = "abc1234";
+
+		const code = await ssrBuild(whereami({ pkg: { name: "mine", version: "2.0.0" } }));
+
+		expect(code).toContain('"version": "2.0.0"');
+		expect(code).toContain('"environment": "prod"');
+	});
+
+	it("answers the import in the dev server's SSR module graph too", async () => {
+		server = await createServer({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			server: { middlewareMode: true },
+			// Keep the node_modules path, or the symlinked package would count as source code.
+			resolve: { preserveSymlinks: true },
+			plugins: [whereami()],
+		});
+
+		const mod = await server.ssrLoadModule("/build-info.js");
+
+		expect(mod.default.environment).toBe("dev");
+		expect(mod.default.pkg.name).toBe("fixture-basic");
+	});
+
+	it("drops its HTML hooks next to SvelteKit, which warns about transformIndexHtml", async () => {
+		const plugin = whereami();
+		await build({
+			root: basicRoot,
+			configFile: false,
+			logLevel: "silent",
+			mode: "development",
+			build: { outDir: "dist-test", write: true },
+			plugins: [{ name: "vite-plugin-sveltekit-setup" }, plugin],
+		});
+
+		expect(plugin.transformIndexHtml).toBeUndefined();
+		expect(existsSync(path.join(basicRoot, "dist-test/__whereami-favicon.svg"))).toBe(false);
 	});
 });

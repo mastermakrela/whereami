@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultDetect } from "../src/detect.js";
+import { defaultDetect, resolveDetect } from "../src/detect.js";
 
 describe("defaultDetect", () => {
 	it("returns prod for the production mode", () => {
@@ -77,5 +77,22 @@ describe("defaultDetect", () => {
 				env: { VERCEL: "1", VERCEL_ENV: "preview", NODE_ENV: "production" },
 			}),
 		).toBe("staging");
+	});
+});
+
+const ctx = (env: Record<string, string> = {}) => ({
+	mode: "production",
+	command: "build" as const,
+	env,
+});
+
+describe("resolveDetect", () => {
+	it("uses environment, unless WHEREAMI_ENV overrides it", () => {
+		expect(resolveDetect({ environment: "staging" })(ctx())).toBe("staging");
+		expect(resolveDetect({ environment: "staging" })(ctx({ WHEREAMI_ENV: "qas" }))).toBe("qas");
+	});
+
+	it("lets a custom detect replace environment", () => {
+		expect(resolveDetect({ environment: "staging", detect: () => "local" })(ctx())).toBe("local");
 	});
 });

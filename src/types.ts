@@ -1,4 +1,7 @@
-import type { PkgInfo } from "./pkg.js";
+export interface PkgInfo {
+	name: string;
+	version: string;
+}
 
 export interface EnvironmentConfig {
 	/**
@@ -57,9 +60,9 @@ export interface BadgeOptions {
 }
 
 export interface BadgeEndpointOptions {
-	/** Path the SVG is served from, e.g. "/_whereami/badge.svg". Setting this enables the feature. */
-	path: string;
-	/** Left-hand label. Default: "deployed". */
+	/** Path the SVG is served from. Default: "/_whereami/badge.svg". */
+	path?: string;
+	/** Left-hand label. Default: the environment key, e.g. "prod" or "staging". */
 	label?: string;
 	/** Which fields make up the right-hand value, in order. Default: ["version"]. */
 	show?: Array<"name" | "version" | "environment">;
@@ -75,6 +78,12 @@ export interface WhereAmIOptions {
 	 * `mode` (production -> "prod", staging -> "staging", everything else -> "dev").
 	 */
 	detect?: (ctx: DetectContext) => string;
+	/**
+	 * Use this environment key instead of the default detection — typically the one the
+	 * `whereami()` Vite plugin resolved at build time (see `vite-plugin-whereami/build`). A
+	 * `WHEREAMI_ENV` env var still overrides it, and a custom `detect` replaces both.
+	 */
+	environment?: string;
 	/**
 	 * Per-environment overrides. Keys are free-form and matched against whatever `detect()` returns.
 	 * Defaults to `{ prod: {}, staging: {...}, dev: {...} }` (prod makes no changes).
@@ -104,14 +113,23 @@ export interface WhereAmIOptions {
 	pkg?: PkgInfo;
 	/**
 	 * Serve an SVG status badge at a fixed path, for use as a repository badge image.
-	 * Disabled unless set. SvelteKit only — see the `whereamiHandle` docs.
+	 * Disabled unless set; `true` serves it at the default path with the default label.
+	 * SvelteKit only — see the `whereamiHandle` docs.
 	 *
 	 * The endpoint is **public and unauthenticated** — anyone who knows (or guesses) the
 	 * path can request it, with no way to gate access. It deliberately exposes only the
 	 * fields listed in `show` (name/version/environment) and nothing else: never
 	 * `metadata`, never environment variables, never anything not explicitly listed.
 	 */
-	badgeEndpoint?: BadgeEndpointOptions;
+	badgeEndpoint?: true | BadgeEndpointOptions;
+}
+
+/** What `vite-plugin-whereami/build` exports: the build-time half of `whereamiHandle()`'s options. */
+export interface WhereAmIBuild {
+	/** The environment key `detect` returned when the app was built. */
+	environment?: string;
+	/** `package.json`'s name/version, with the build's short commit as semver build metadata. */
+	pkg?: PkgInfo;
 }
 
 export interface ResolvedBannerOptions {
