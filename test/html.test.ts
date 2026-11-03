@@ -179,6 +179,17 @@ describe("badgeTag", () => {
 		expect(tag.children).toContain('color:#111;color:contrast-color(" + color + ")');
 	});
 
+	it("themes the panel from prefers-color-scheme", () => {
+		const tag = badgeTag(pkg, "staging", "#f59e0b", {});
+		expect(tag.children).toContain("prefers-color-scheme: dark");
+	});
+
+	it("announces a version change seen since the last visit, namespaced by package name", () => {
+		const tag = badgeTag(pkg, "staging", "#f59e0b", {});
+		expect(tag.children).toContain('"whereami:last-version:" + info.name');
+		expect(tag.children).toContain('"updated " + last');
+	});
+
 	it("lets the built-in fields win over a colliding metadata key", () => {
 		const tag = badgeTag(pkg, "staging", "#f59e0b", { name: "custom" });
 		const info = JSON.parse((tag.children as string).match(/var info = (\{.*?\});/)?.[1] ?? "{}");

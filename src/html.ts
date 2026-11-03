@@ -222,7 +222,7 @@ function mount(){
   triangle.style.cssText = "position:fixed;bottom:0;left:0;width:36px;height:36px;background:" + color + ";clip-path:polygon(0 0,100% 100%,0 100%);cursor:pointer;z-index:2147483647;";
 
   var panel = document.createElement("div");
-  panel.style.cssText = "position:fixed;bottom:44px;left:8px;display:none;background:#111;color:#f3f4f6;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.35);z-index:2147483647;overflow:hidden;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;";
+  panel.style.cssText = "position:fixed;bottom:44px;left:8px;display:none;border-radius:8px;z-index:2147483647;overflow:hidden;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;";
 
   var header = document.createElement("div");
   header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px 6px 10px;background:" + color + ";color:#111;color:contrast-color(" + color + ");font-weight:700;";
@@ -241,11 +241,32 @@ function mount(){
 
   panel.appendChild(header);
   panel.appendChild(pre);
+  var scheme = window.matchMedia("(prefers-color-scheme: dark)");
+  function theme(){
+    panel.style.background = scheme.matches ? "#111" : "#fff";
+    panel.style.color = scheme.matches ? "#f3f4f6" : "#111827";
+    panel.style.boxShadow = scheme.matches ? "0 4px 16px rgba(0,0,0,.35)" : "0 4px 16px rgba(0,0,0,.15)";
+  }
+  theme();
+  scheme.addEventListener("change", theme);
 
   function setOpen(next){ open = next; panel.style.display = open ? "block" : "none"; }
   triangle.addEventListener("click", function(e){ e.stopPropagation(); setOpen(!open); });
   document.addEventListener("click", function(e){ if (open && !panel.contains(e.target)) setOpen(false); });
   document.addEventListener("keydown", function(e){ if (open && e.key === "Escape") setOpen(false); });
+
+  try {
+    var key = "whereami:last-version:" + info.name;
+    var last = localStorage.getItem(key);
+    localStorage.setItem(key, info.version);
+    if (last !== null && last !== info.version) {
+      var notice = document.createElement("div");
+      notice.style.cssText = "padding:6px 12px;border-bottom:1px solid rgba(128,128,128,.4);";
+      notice.textContent = "updated " + last + " \\u2192 " + info.version;
+      panel.insertBefore(notice, pre);
+      setOpen(true);
+    }
+  } catch (e) {}
 
   document.body.appendChild(triangle);
   document.body.appendChild(panel);

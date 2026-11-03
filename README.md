@@ -166,6 +166,9 @@ banner, in a `<pre>` block:
 Dismiss it by clicking the × button, clicking anywhere outside the panel, or
 pressing Escape.
 
+The badge remembers the last version it saw in `localStorage`; when that
+changes, the panel opens once with an `updated 1.3.2 → 1.4.0` line.
+
 ```ts
 whereami({ badge: { enabled: true } });
 
