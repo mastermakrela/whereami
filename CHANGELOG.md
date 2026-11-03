@@ -1,5 +1,15 @@
 # vite-plugin-whereami
 
+## 0.8.0
+
+### Minor Changes
+
+- da94f49: The on-screen badge now opens its panel once with an "updated X → Y" line the first time you load a page after the app's version changed.
+
+### Patch Changes
+
+- da94f49: The on-screen badge panel now follows the system light/dark preference instead of always being dark.
+
 ## 0.7.0
 
 ### Minor Changes
